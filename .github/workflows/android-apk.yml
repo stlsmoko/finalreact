@@ -1,0 +1,85 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-release-apk:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      CI: "1"
+      EXPO_NO_TELEMETRY: "1"
+      REEL_REACTOR_SIDE_BY_SIDE: "1"
+      GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK and CMake
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android CMake
+        run: sdkmanager "cmake;3.22.1"
+
+      - name: Install JavaScript dependencies
+        run: pnpm install
+
+      - name: Restore missing build files
+        run: |
+          git fetch --depth=1 origin 211ba865950936557b066dc431e7875d89a7ad15 || true
+          git checkout 211ba865950936557b066dc431e7875d89a7ad15 -- \
+            vendor/ffmpeg-expo/plugin \
+            vendor/ffmpeg-expo/build \
+            vendor/reel-importer/build \
+            assets/images/icon.png \
+            assets/images/splash-icon.png \
+            assets/images/favicon.png || true
+          mkdir -p node_modules/ffmpeg-expo node_modules/reel-importer assets/images
+          cp -a vendor/ffmpeg-expo/plugin vendor/ffmpeg-expo/build node_modules/ffmpeg-expo/ || true
+          cp -a vendor/reel-importer/build node_modules/reel-importer/ || true
+          if [ ! -f assets/images/icon.png ] && [ -f assets/images/android-icon-foreground.png ]; then cp assets/images/android-icon-foreground.png assets/images/icon.png; fi
+          if [ ! -f assets/images/splash-icon.png ] && [ -f assets/images/android-icon-foreground.png ]; then cp assets/images/android-icon-foreground.png assets/images/splash-icon.png; fi
+          if [ ! -f assets/images/favicon.png ] && [ -f assets/images/android-icon-foreground.png ]; then cp assets/images/android-icon-foreground.png assets/images/favicon.png; fi
+          test -f node_modules/ffmpeg-expo/plugin/build/index.js
+          test -f node_modules/reel-importer/build/index.js
+
+      - name: Point Android bundle at Expo app
+        run: |
+          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package.json','utf8')); delete p.type; p.main='expo-router/entry'; fs.writeFileSync('package.json', JSON.stringify(p,null,2)+'\n');"
+
+      - name: Generate Android project
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Build standalone release APK
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Upload standalone Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1reel-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,64 @@
+{
+  "name": "ffmpeg-expo",
+  "version": "0.1.0-reelreactor.1",
+  "description": "FFmpeg for Expo/React Native - native video/audio processing without ffmpeg-kit",
+  "type": "commonjs",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "keywords": [
+    "expo",
+    "react-native",
+    "ffmpeg",
+    "video",
+    "audio",
+    "transcoding",
+    "compression"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kingjnr4/ffmpeg-expo.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "peerDependencies": {
+    "expo": ">=56.0.0",
+    "react": ">=19.2.0",
+    "react-native": ">=0.85.0"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "devDependencies": {
+    "@expo/config-plugins": "~56.0.9",
+    "@types/node": "^22.13.0",
+    "@types/react": "~19.2.14",
+    "expo": "~56.0.12",
+    "expo-module-scripts": "^56.0.3",
+    "expo-modules-core": "~56.0.17",
+    "typescript": "^6.0.3"
+  },
+  "files": [
+    "build",
+    "android",
+    "ios",
+    "!ios/Frameworks",
+    "!ios/Frameworks/**",
+    "plugin/build",
+    "scripts",
+    "expo-module.config.json",
+    "app.plugin.js"
+  ],
+  "ffmpegExpo": {
+    "binaryReleaseTag": "ffmpeg-6.1.1-r2"
+  },
+  "scripts": {
+    "build": "tsc",
+    "build:plugin": "tsc -p plugin/tsconfig.json",
+    "prepare:package": "pnpm run build && pnpm run build:plugin",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm run build && node --test tests/*.test.js",
+    "clean": "rm -rf build plugin/build",
+    "pack:check": "pnpm run prepare:package && node ../../scripts/validate-package.js && publint .",
+    "postinstall": "node scripts/postinstall.js"
+  }
+}

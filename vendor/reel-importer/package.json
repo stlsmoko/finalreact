@@ -1,0 +1,12 @@
+{
+  "name": "reel-importer",
+  "version": "0.1.0",
+  "private": true,
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "peerDependencies": {
+    "expo": ">=57.0.0",
+    "react-native": ">=0.86.0"
+  },
+  "files": ["build", "android", "expo-module.config.json"]
+}

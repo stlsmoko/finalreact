@@ -1,0 +1,11 @@
+{
+  "name": "Reel Reactor Studio",
+  "description": "An advanced reaction video studio featuring green screen chroma keying, Apple-like glassmorphic UI, movable camera overlays, and dual-track audio mixing.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

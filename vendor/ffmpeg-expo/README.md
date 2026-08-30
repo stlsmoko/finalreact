@@ -1,0 +1,332 @@
+# ffmpeg-expo
+
+Native FFmpeg support for Expo apps.
+
+Use this package for on-device FFmpeg command execution, progress updates, logs, cancellation, and FFmpeg version information. Commands use upstream FFmpeg argument handling; available codecs, filters, formats, and protocols depend on the installed binary profile.
+
+## Status
+
+This project is not stable for production use yet. It is mostly a hobby project while the native implementation, packaging, and binary distribution are still being worked out.
+
+Use `ffmpeg-expo@0.0.3` or newer. Versions before `0.0.3` are not expected to work.
+
+## Features
+
+- Android and iOS native FFmpeg binaries
+- Upstream FFmpeg command parsing and execution
+- Progress and log callbacks
+- Session cancellation
+- Typed complex filtergraph builder
+- Expo config plugin
+- TypeScript definitions
+- LGPL-only FFmpeg build with no GPL codecs
+
+## Requirements
+
+| Requirement | Version |
+| --- | --- |
+| Expo SDK | `>=56.0.0` |
+| React Native | `>=0.85.0` |
+| React | `>=19.2.0` |
+| Node.js | `>=22.13.0` |
+| Android | Android 7.0+ / API 24+ |
+| iOS | 16.4+ |
+
+Expo Go is not supported because this package includes native code. Use an Expo development build or a prebuilt Expo native project.
+
+Native project/toolchain requirements:
+
+| Toolchain | Version |
+| --- | --- |
+| Swift | 5.9 |
+| Java / Kotlin JVM target | 17 |
+| C++ | C++17 |
+| CMake | 3.22.1 |
+| Android NDK | r25+|
+
+React Native New Architecture, Fabric, TurboModules, and direct app-level JSI setup are not required. The package is implemented as an Expo Module and is loaded through `expo-modules-core`.
+
+## Installation
+
+```bash
+npx expo install ffmpeg-expo
+```
+
+The package downloads prebuilt FFmpeg binaries during install.
+
+### Preview And Custom Binaries
+
+By default, postinstall downloads `ffmpeg-android.tar.gz` and, on macOS, `ffmpeg-ios.zip` from the GitHub release configured in `package.json`. The following environment variables override that default:
+
+| Variable | Purpose |
+| --- | --- |
+| `EXPO_FFMPEG_BINARY_BASE_URL` | Base URL containing both archives. |
+| `EXPO_FFMPEG_ANDROID_ARCHIVE_URL` | Complete Android archive URL; takes precedence over the base URL. |
+| `EXPO_FFMPEG_IOS_ARCHIVE_URL` | Complete iOS archive URL; takes precedence over the base URL. |
+| `EXPO_FFMPEG_ANDROID_ARCHIVE` | Local Android archive path; takes precedence over URL settings. Relative paths resolve from the directory where npm was invoked. |
+| `EXPO_FFMPEG_IOS_ARCHIVE` | Local iOS archive path; takes precedence over URL settings. Relative paths resolve from the directory where npm was invoked. |
+| `EXPO_FFMPEG_ANDROID_SHA256` | Expected Android archive SHA-256. When set, extraction only occurs after a match. |
+| `EXPO_FFMPEG_IOS_SHA256` | Expected iOS archive SHA-256. When set, extraction only occurs after a match. |
+
+Install a [pkg.pr.new](https://pkg.pr.new/) preview while using binary archives from a preview host:
+
+```bash
+EXPO_FFMPEG_BINARY_BASE_URL=https://preview.example.com/ffmpeg/my-commit \
+npm install https://pkg.pr.new/ffmpeg-expo@<commit>
+```
+
+The base URL must expose `/ffmpeg-android.tar.gz` and `/ffmpeg-ios.zip`. Use the per-platform URL variables when the archive URLs do not share that layout:
+
+```bash
+EXPO_FFMPEG_ANDROID_ARCHIVE_URL=https://preview.example.com/android.tar.gz \
+EXPO_FFMPEG_ANDROID_SHA256=<64-character-sha256> \
+npm install https://pkg.pr.new/ffmpeg-expo@<commit>
+```
+
+To test a packed npm tarball without publishing a release, provide local binary archives when installing it. On macOS, set both archives; on Linux, only Android is installed:
+
+```bash
+pnpm --dir packages/expo-ffmpeg pack
+EXPO_FFMPEG_ANDROID_ARCHIVE=/absolute/path/ffmpeg-android.tar.gz \
+EXPO_FFMPEG_IOS_ARCHIVE=/absolute/path/ffmpeg-ios.zip \
+npm install /absolute/path/ffmpeg-expo-0.1.0.tgz
+```
+
+Checksums are optional, but verification is required whenever the corresponding checksum variable is supplied. Temporary archive copies are removed after success or failure. Existing `SKIP_FFMPEG_DOWNLOAD=1` behavior still skips all setup.
+
+## Expo Setup
+
+Add the config plugin, then run prebuild.
+
+```json
+{
+  "expo": {
+    "plugins": [
+      [
+        "ffmpeg-expo",
+        {
+          "includeX86": true
+        }
+      ]
+    ]
+  }
+}
+```
+
+```bash
+npx expo prebuild
+```
+
+### Plugin Options
+
+| Option | Default | Use it for |
+| --- | --- | --- |
+| `includeX86` | `false` | Including Android x86_64 emulator binaries in generated ABI filters. |
+| `ndkVersion` | unset | Optional Android NDK override. When unset, Expo/Android Gradle defaults are used. |
+| `binaryUrl` | unset | Reserved/experimental. The plugin writes `EXPO_FFMPEG_BINARY_URL` into iOS Podfile properties; use the postinstall environment variables above for binary installation. |
+
+`app.config.js` example:
+
+```javascript
+export default {
+  expo: {
+    plugins: [
+      [
+        'ffmpeg-expo',
+        {
+          includeX86: true,
+        },
+      ],
+    ],
+  },
+};
+```
+
+The config plugin does not change FFmpeg codec support. Custom codec builds require custom binaries.
+
+Do not rely on the plugin's `binaryUrl` for postinstall downloads; use `EXPO_FFMPEG_BINARY_BASE_URL` or the per-platform overrides above.
+
+## Usage
+
+### Basic Remux
+
+```typescript
+import { execute, FFmpegError } from 'ffmpeg-expo';
+
+async function remux(inputPath: string, outputPath: string) {
+  try {
+    const result = await execute(['-i', inputPath, '-y', outputPath]);
+    console.log('Finished', result.returnCode, result.duration);
+  } catch (error) {
+    if (error instanceof FFmpegError) {
+      console.error('FFmpeg failed:', error.returnCode, error.output);
+    }
+  }
+}
+```
+
+### Complex Filtergraphs
+
+`FilterGraphBuilder` serializes labels, chains, and filter options without adding shell quoting. Named option objects and positional option arrays are escaped for both FFmpeg filter-option and filtergraph parsing.
+
+```typescript
+import { execute, FilterGraphBuilder } from 'ffmpeg-expo';
+
+const graph = new FilterGraphBuilder().addChain({
+  inputs: '0:v',
+  filters: [
+    { name: 'scale', options: { w: 1280, h: -2 } },
+    { name: 'fps', options: [30] },
+  ],
+  outputs: 'video',
+});
+
+await execute([
+  '-i', inputPath,
+  ...graph.buildArgs(),
+  '-map', '[video]',
+  '-y', outputPath,
+]);
+```
+
+Use `addChain` for escaped, structured filterchains. `addRawChain` accepts a complete filterchain without validation or escaping for syntax that cannot be represented by the typed API.
+
+### Progress And Logs
+
+```typescript
+import { run } from 'ffmpeg-expo';
+
+function remuxWithProgress(inputPath: string, outputPath: string) {
+  const session = run(['-i', inputPath, '-y', outputPath], {
+    onProgress: (progress) => {
+      console.log(`Processed: ${progress.time}ms`);
+      console.log(`Speed: ${progress.speed}x`);
+    },
+    onLog: (log) => {
+      console.log(`[${log.level}] ${log.message}`);
+    },
+    logLevel: 'info',
+  });
+
+  return session.result;
+}
+```
+
+Progress events include `sessionId`, `time`, `bitrate`, `speed`, `frame`, `fps`, and `size`. The TypeScript `FFmpegProgress.totalDuration` field is reserved for future native duration reporting and is not emitted by the current Android or iOS implementation.
+
+### Cancellation
+
+```typescript
+const session = run(['-i', inputPath, '-y', outputPath]);
+
+await session.cancel();
+const result = await session.result;
+```
+
+Cancelled sessions finish with return code `255`. Partial output files are not deleted automatically.
+
+### FFmpeg Version
+
+```typescript
+import { getVersion } from 'ffmpeg-expo';
+
+const version = getVersion();
+console.log(`FFmpeg ${version.version}`);
+```
+
+## API
+
+### `run(args, options?)`
+
+Starts a session and returns:
+
+- `id`: session identifier.
+- `cancel()`: requests cancellation.
+- `result`: promise that resolves with the session result.
+
+Supported command shape:
+
+```typescript
+run(['-i', inputPath, '-y', outputPath]);
+```
+
+### `execute(args, options?)`
+
+Runs a command and resolves with the result. Throws `FFmpegError` when FFmpeg returns a non-zero code.
+
+### `FilterGraphBuilder`
+
+Builds a complex filtergraph for use with `run` or `execute`.
+
+- `addChain({ inputs?, filters, outputs? })` adds a typed filterchain.
+- `addRawChain(fragment)` adds an unescaped filterchain.
+- `build()` returns the graph string.
+- `buildArgs()` returns `['-filter_complex', graph]`.
+
+### `RunOptions`
+
+| Option | Status |
+| --- | --- |
+| `onProgress` | Supported. Receives native progress events when FFmpeg emits parseable progress. |
+| `onLog` | Supported. Receives native log events. |
+| `logLevel` | Supported. Defaults to `warning`. |
+| `env` | Reserved/not ready. It remains in the TypeScript API, but the current native implementations do not apply environment variables to the FFmpeg process. |
+
+### `getVersion()`
+
+Returns FFmpeg version information.
+
+## Default Codec Support
+
+The default `min` binaries are LGPL-only. The command frontend supports normal FFmpeg arguments, but commands can only use components enabled in this profile. It does not include GPL or external codec libraries such as `libx264`, `libx265`, `libmp3lame`, `libvpx`, `libopus`, `libvorbis`, `libass`, or `libdav1d`.
+
+This means common recipes such as video compression with `libx264`, video to MP3, video to FLAC, H.264 to H.265, H.264 to VP9, subtitles, and multi-track mapping are not supported by default.
+
+Compact binary component summary:
+
+| Area | Included in default binaries | Not included / not ready by default |
+| --- | --- | --- |
+| Decoding / demuxing | Common AAC, AC3, H.264, HEVC, MP3, MPEG-4, Vorbis, Opus, FLAC, PCM, VP8/VP9, MP4/MOV, Matroska/WebM, WAV/OGG inputs | Subtitle demux/encode workflows are not enabled or validated. |
+| Encoding / muxing | AAC, MPEG-4, PCM, MP4/MOV, Matroska/WebM, WAV/OGG outputs; Android also includes GIF/PNG/MJPEG image outputs | MP3, FLAC, H.265, VP9, Opus, Vorbis, and libx264/libx265/libvpx-backed encoding are not included. |
+| Filters | Basic built-in filters such as `scale`, `trim`, `volume`, `fps`, `format`, and `concat`; Android also includes `overlay` and `drawtext` | Subtitle hardcoding and `libass` workflows are not included. |
+
+For the detailed binary build configuration, see [BUILDING_BINARIES.md](https://github.com/kingjnr4/ffmpeg-expo/blob/main/packages/expo-ffmpeg/docs/BUILDING_BINARIES.md).
+
+## Platform Binaries
+
+| Platform | Architectures |
+| --- | --- |
+| Android | `arm64-v8a`, `armeabi-v7a`, `x86_64` |
+| iOS | `arm64` device, `arm64` + `x86_64` simulator |
+
+## Troubleshooting
+
+### Binaries not found
+
+Run the install script again from the installed package:
+
+```bash
+node scripts/postinstall.js
+```
+
+The expected release assets are `ffmpeg-android.tar.gz` and `ffmpeg-ios.zip`.
+
+### Android build errors
+
+Check that your Android project uses a compatible NDK and ABI filters. The plugin only writes an NDK version when `ndkVersion` is explicitly configured.
+
+### iOS build errors
+
+Run CocoaPods after native project generation or package updates:
+
+```bash
+cd ios && pod install --repo-update
+```
+
+## Building From Source
+
+See [BUILDING_BINARIES.md](https://github.com/kingjnr4/ffmpeg-expo/blob/main/packages/expo-ffmpeg/docs/BUILDING_BINARIES.md).
+
+## License
+
+This package is MIT licensed. FFmpeg is LGPL 2.1. See [LICENSING.md](https://github.com/kingjnr4/ffmpeg-expo/blob/main/packages/expo-ffmpeg/docs/LICENSING.md).

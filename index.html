@@ -1,0 +1,2061 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Reel Reactor Studio</title>
+<meta name="description" content="An advanced reaction video studio featuring green screen chroma keying, Apple-like glassmorphic UI, movable camera overlays, and dual-track audio mixing.">
+<meta property="og:title" content="Reel Reactor Studio">
+<meta property="og:description" content="An advanced reaction video studio featuring green screen chroma keying, Apple-like glassmorphic UI, movable camera overlays, and dual-track audio mixing.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
+<style>
+  :root {
+    --bg: #000000;
+    --card: #141416;
+    --card-glass: rgba(26, 26, 30, 0.88);
+    --border: rgba(255, 255, 255, 0.1);
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --text: #F5F5F7;
+    --text-sec: #86868B;
+    --text-ter: #515154;
+    --accent: #FF3B30;
+    --accent-hover: #FF453A;
+    --blue: #0A84FF;
+    --green: #30D158;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Plus Jakarta Sans", "Helvetica Neue", sans-serif;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow-x: hidden;
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* App Layout */
+  .app-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 480px;
+    min-height: 100dvh;
+    margin: 0 auto;
+    padding: env(safe-area-inset-top, 12px) 16px env(safe-area-inset-bottom, 16px);
+    justify-content: space-between;
+    gap: 10px;
+    position: relative;
+  }
+
+  @media (min-width: 900px) {
+    .app-container {
+      max-width: 520px;
+      padding: 16px 0;
+    }
+  }
+
+  /* Minimal Top Bar */
+  .top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 44px;
+    padding: 0 4px;
+    z-index: 20;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #FFFFFF;
+  }
+
+  .brand-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  .top-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .btn-header-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #FFFFFF;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 20px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .btn-header-action:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .btn-header-action:active {
+    transform: scale(0.96);
+  }
+
+  .btn-header-action[data-active="true"] {
+    background: rgba(10, 132, 255, 0.25);
+    border-color: rgba(10, 132, 255, 0.5);
+    color: #64D2FF;
+  }
+
+  /* Viewfinder Area */
+  .viewport-wrapper {
+    position: relative;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .stage-box {
+    position: relative;
+    width: 100%;
+    max-width: min(100%, calc((100dvh - 230px) * 0.5625));
+    aspect-ratio: 9 / 16;
+    border-radius: 28px;
+    overflow: hidden;
+    background: #09090B;
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08);
+    touch-action: none;
+  }
+
+  canvas#stage {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #000;
+  }
+
+  /* Floating Drag Boundary Ring */
+  .bubble-ring {
+    position: absolute;
+    border: 1.5px solid rgba(255, 255, 255, 0.6);
+    pointer-events: none;
+    transition: border-radius 0.2s ease, opacity 0.2s ease;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.4);
+  }
+  .bubble-ring[data-shape="circle"] { border-radius: 50%; }
+  .bubble-ring[data-shape="square"] { border-radius: 20px; }
+  .bubble-ring[data-shape="cutout"] {
+    border-radius: 50% 50% 40% 40%;
+    border-color: rgba(255, 255, 255, 0.4);
+  }
+  .bubble-ring[data-recording="true"] {
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+  .bubble-ring[data-hidden="true"] { opacity: 0; }
+
+  /* Minimal iOS Timer Pill */
+  .record-pill {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: rgba(0, 0, 0, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 20px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    font-size: 13px;
+    font-weight: 600;
+    color: #FFFFFF;
+    letter-spacing: 0.02em;
+    pointer-events: none;
+    z-index: 10;
+    transition: opacity 0.2s ease;
+  }
+
+  .pill-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+    animation: blink 1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.3; transform: scale(0.85); }
+  }
+
+  /* Empty State / Ingest Modal */
+  .ingest-card {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+    gap: 20px;
+    text-align: center;
+    background: radial-gradient(circle at 50% 35%, #18181C 0%, #08080A 100%);
+    z-index: 12;
+  }
+
+  .ingest-title {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #FFFFFF;
+  }
+
+  .ingest-desc {
+    font-size: 13px;
+    color: var(--text-sec);
+    line-height: 1.45;
+    max-width: 280px;
+  }
+
+  /* iOS Segmented Ingest Tabs */
+  .segmented-control {
+    display: flex;
+    background: rgba(255, 255, 255, 0.08);
+    padding: 3px;
+    border-radius: 14px;
+    width: 100%;
+    max-width: 320px;
+    backdrop-filter: blur(20px);
+  }
+
+  .seg-btn {
+    flex: 1;
+    padding: 8px 10px;
+    border: none;
+    border-radius: 11px;
+    background: transparent;
+    color: var(--text-sec);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    white-space: nowrap;
+  }
+
+  .seg-btn[aria-selected="true"] {
+    background: rgba(255, 255, 255, 0.18);
+    color: #FFFFFF;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .ingest-body {
+    width: 100%;
+    max-width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .btn-apple-primary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    height: 48px;
+    background: #FFFFFF;
+    color: #000000;
+    font-size: 15px;
+    font-weight: 700;
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .btn-apple-primary:hover {
+    background: #E5E5EA;
+  }
+
+  .btn-apple-primary:active {
+    transform: scale(0.98);
+  }
+
+  .link-input-group {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .apple-input {
+    flex: 1;
+    height: 46px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 0 14px;
+    color: #FFFFFF;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s ease;
+  }
+
+  .apple-input:focus {
+    border-color: var(--blue);
+  }
+
+  .apple-input::placeholder {
+    color: var(--text-ter);
+  }
+
+  .btn-input-submit {
+    height: 46px;
+    padding: 0 16px;
+    background: var(--blue);
+    border: none;
+    border-radius: 12px;
+    color: #FFFFFF;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  /* Sample chips */
+  .sample-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn-sample-chip {
+    flex: 1;
+    padding: 12px 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    color: #FFFFFF;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+    line-height: 1.3;
+  }
+
+  .btn-sample-chip:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  /* Video Review Screen */
+  video.review-player {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 28px;
+    object-fit: cover;
+    background: #000;
+  }
+
+  /* Minimal Bottom Controls Dock */
+  .control-dock {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    z-index: 20;
+  }
+
+  /* Shape Pill */
+  .shape-pill-bar {
+    display: flex;
+    background: rgba(26, 26, 30, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 24px;
+    padding: 4px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  .shape-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 14px;
+    border-radius: 18px;
+    background: transparent;
+    border: none;
+    color: var(--text-sec);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .shape-item[aria-pressed="true"] {
+    background: rgba(255, 255, 255, 0.16);
+    color: #FFFFFF;
+  }
+
+  /* Main Action Shutter Bar */
+  .shutter-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    max-width: 380px;
+    padding: 2px 12px;
+  }
+
+  .dock-side-btn {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #FFFFFF;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    font-size: 17px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .dock-side-btn:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .dock-side-btn:active {
+    transform: scale(0.92);
+  }
+
+  .dock-side-btn[data-active="true"] {
+    background: rgba(255, 59, 48, 0.25);
+    border-color: rgba(255, 59, 48, 0.5);
+    color: #FF453A;
+  }
+
+  .dock-side-btn[data-highlight="true"] {
+    background: rgba(10, 132, 255, 0.25);
+    border-color: rgba(10, 132, 255, 0.5);
+    color: #64D2FF;
+  }
+
+  /* Iconic Apple Camera Shutter Button */
+  .apple-shutter {
+    position: relative;
+    width: 74px;
+    height: 74px;
+    border-radius: 50%;
+    border: 4px solid #FFFFFF;
+    background: transparent;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .apple-shutter:active {
+    transform: scale(0.94);
+  }
+
+  .shutter-core {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--accent);
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .apple-shutter[data-rec="true"] .shutter-core {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: var(--accent);
+  }
+
+  /* Review Action Buttons */
+  .review-actions {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    max-width: 380px;
+  }
+
+  .btn-review-sec {
+    flex: 1;
+    height: 48px;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    color: #FFFFFF;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    backdrop-filter: blur(20px);
+    transition: all 0.2s ease;
+  }
+
+  .btn-review-sec:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .btn-review-sec:active {
+    transform: scale(0.98);
+  }
+
+  /* =========================================================
+     Apple-Style Glass Audio Control Sheet / Popover
+     ========================================================= */
+  .audio-sheet-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 50;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 12px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .audio-sheet-backdrop.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .audio-sheet {
+    width: 100%;
+    max-width: 440px;
+    background: var(--card-glass);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 24px;
+    padding: 20px 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    backdrop-filter: blur(32px);
+    -webkit-backdrop-filter: blur(32px);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08);
+    transform: translateY(20px) scale(0.98);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .audio-sheet-backdrop.open .audio-sheet {
+    transform: translateY(0) scale(1);
+  }
+
+  .audio-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .audio-sheet-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #FFFFFF;
+    letter-spacing: -0.01em;
+  }
+
+  .btn-close-sheet {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.12);
+    border: none;
+    color: #FFFFFF;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+  }
+
+  .btn-close-sheet:hover {
+    background: rgba(255, 255, 255, 0.22);
+  }
+
+  /* Audio Slider Group */
+  .audio-channel-group {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .audio-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .audio-row-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .audio-row-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #F5F5F7;
+  }
+
+  .audio-row-value {
+    color: var(--text-sec);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+  }
+
+  .audio-slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .audio-icon-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: #FFFFFF;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    font-size: 14px;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+  }
+
+  .audio-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  .audio-icon-btn[data-muted="true"] {
+    background: rgba(255, 59, 48, 0.25);
+    border-color: rgba(255, 59, 48, 0.4);
+    color: #FF453A;
+  }
+
+  /* iOS Style Range Slider */
+  .apple-range {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 32px;
+    background: transparent;
+    cursor: pointer;
+    outline: none;
+    margin: 0;
+  }
+
+  .apple-range::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.15);
+    transition: background 0.2s ease;
+  }
+
+  .apple-range:focus::-webkit-slider-runnable-track {
+    background: rgba(255, 255, 255, 0.22);
+  }
+
+  .apple-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 24px;
+    width: 24px;
+    border-radius: 50%;
+    background: #FFFFFF;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+    margin-top: -8px;
+    cursor: grab;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+  }
+
+  .apple-range::-webkit-slider-thumb:active {
+    cursor: grabbing;
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), 0 0 0 3px rgba(10, 132, 255, 0.3);
+  }
+
+  /* Live Voice Audio Meter */
+  .mic-meter-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .mic-meter-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-sec);
+    min-width: 68px;
+  }
+
+  .mic-meter-track {
+    flex: 1;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .mic-meter-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #30D158 0%, #FFD60A 75%, #FF453A 100%);
+    border-radius: 3px;
+    transition: width 0.05s ease-out;
+  }
+
+  /* Apple Style Toggle Row */
+  .audio-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .toggle-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .toggle-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #FFFFFF;
+  }
+
+  .toggle-desc {
+    font-size: 11px;
+    color: var(--text-sec);
+  }
+
+  /* iOS Switch */
+  .ios-switch {
+    position: relative;
+    display: inline-block;
+    width: 48px;
+    height: 28px;
+    flex-shrink: 0;
+  }
+
+  .ios-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .ios-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background-color: rgba(255, 255, 255, 0.18);
+    border-radius: 28px;
+    transition: background-color 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .ios-slider::before {
+    position: absolute;
+    content: "";
+    height: 22px;
+    width: 22px;
+    left: 3px;
+    bottom: 3px;
+    background-color: #FFFFFF;
+    border-radius: 50%;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .ios-switch input:checked + .ios-slider {
+    background-color: var(--green);
+  }
+
+  .ios-switch input:checked + .ios-slider::before {
+    transform: translateX(20px);
+  }
+
+  /* Minimal Notification Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(30px);
+    opacity: 0;
+    pointer-events: none;
+    background: rgba(30, 30, 34, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #FFFFFF;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: 20px;
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 100;
+    white-space: nowrap;
+  }
+
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .hidden { display: none !important; }
+  .offscreen { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; left: -9999px; }
+</style>
+</head>
+<body>
+
+<div class="app-container">
+  <!-- Minimal Top Bar -->
+  <header class="top-bar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span>Reel Reactor</span>
+    </div>
+    <div class="top-actions">
+      <!-- Quick Adjust Audio Button in Header -->
+      <button type="button" class="btn-header-action hidden" id="btnAudioHeader" title="Adjust Reel & Mic Audio Balance">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+        <span>Audio</span>
+      </button>
+      <button type="button" class="btn-header-action hidden" id="btnChangeClip">Change Clip</button>
+    </div>
+  </header>
+
+  <!-- Viewfinder Stage -->
+  <div class="viewport-wrapper">
+    <div class="stage-box" id="stageBox">
+      <canvas id="stage" width="720" height="1280"></canvas>
+      <div class="bubble-ring" id="ring" data-shape="circle" data-hidden="true"></div>
+
+      <!-- Minimal Live Record Timer -->
+      <div class="record-pill hidden" id="recordPill">
+        <span class="pill-dot"></span>
+        <span id="recordTimerText">00:00</span>
+      </div>
+
+      <!-- Ingest Card (Apple Modal Screen) -->
+      <div class="ingest-card" id="ingestCard">
+        <h2 class="ingest-title">Select Reaction Clip</h2>
+        <p class="ingest-desc">Choose a video from your library, paste a social link, or test with a sample.</p>
+
+        <!-- Segmented Ingest Picker -->
+        <div class="segmented-control" role="tablist">
+          <button type="button" class="seg-btn" id="tabUpload" aria-selected="true">Upload</button>
+          <button type="button" class="seg-btn" id="tabLink" aria-selected="false">Link</button>
+          <button type="button" class="seg-btn" id="tabSample" aria-selected="false">Demo</button>
+        </div>
+
+        <div class="ingest-body">
+          <!-- Upload Option -->
+          <div id="panelUpload">
+            <button type="button" class="btn-apple-primary" id="btnPickFile">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Choose Video File
+            </button>
+          </div>
+
+          <!-- Link Option -->
+          <div id="panelLink" class="hidden">
+            <form id="linkForm" class="link-input-group">
+              <input type="url" class="apple-input" id="linkInput" placeholder="Paste link (TikTok, X, MP4, Drive)…" required />
+              <button type="submit" class="btn-input-submit" id="linkSubmitBtn">Import</button>
+            </form>
+            <div class="sample-row" style="margin-top: 10px;">
+              <button type="button" class="btn-sample-chip" id="btnLinkSample1" style="font-size: 11px; padding: 6px 12px;">🌸 Sample MP4</button>
+              <button type="button" class="btn-sample-chip" id="btnLinkSample2" style="font-size: 11px; padding: 6px 12px;">🛹 Action Clip</button>
+            </div>
+            <p id="linkHelpText" style="font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 10px; text-align: center; line-height: 1.4;">
+              Supports Direct MP4, Google Drive, Dropbox, X/Twitter, TikTok, & web video links.
+            </p>
+          </div>
+
+          <!-- Demo Sample Option -->
+          <div id="panelSample" class="hidden">
+            <div class="sample-row">
+              <button type="button" class="btn-sample-chip" id="btnSample1">🛹 Skate</button>
+              <button type="button" class="btn-sample-chip" id="btnSample2">🎮 Gaming</button>
+              <button type="button" class="btn-sample-chip" id="btnSample3">🌊 Ocean</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Finished Video Review Player -->
+      <video class="review-player hidden" id="reviewVideo" playsinline controls></video>
+    </div>
+  </div>
+
+  <!-- Bottom Floating Control Dock -->
+  <div class="control-dock">
+    <!-- Overlay Shape Floating Pill -->
+    <div class="shape-pill-bar hidden" id="shapePillBar">
+      <button type="button" class="shape-item" id="shapeCircle" aria-pressed="true">Circle</button>
+      <button type="button" class="shape-item" id="shapeSquare" aria-pressed="false">Square</button>
+      <button type="button" class="shape-item" id="shapeCutout" aria-pressed="false">✨ Cutout</button>
+    </div>
+
+    <!-- Shutter & Controls Bar (Staging & Recording) -->
+    <div class="shutter-bar hidden" id="shutterBar">
+      <!-- Left: Pause Background Reel Toggle (for commentary) -->
+      <button type="button" class="dock-side-btn" id="btnPauseReel" title="Freeze background clip to commentate" data-active="false">
+        ⏸
+      </button>
+
+      <!-- Center: Iconic Shutter Button -->
+      <button type="button" class="apple-shutter" id="shutterBtn" data-rec="false" aria-label="Record Reaction">
+        <div class="shutter-core"></div>
+      </button>
+
+      <!-- Right 1: Adjust Audio Modal Toggle -->
+      <button type="button" class="dock-side-btn" id="btnAudioDock" title="Adjust Audio Balance">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+      </button>
+
+      <!-- Right 2: Toggle Camera/Mic -->
+      <button type="button" class="dock-side-btn" id="btnCamToggle" title="Enable Camera & Mic">
+        📷
+      </button>
+    </div>
+
+    <!-- Review & Export Action Buttons -->
+    <div class="review-actions hidden" id="reviewActions">
+      <button type="button" class="btn-review-sec" id="btnNewTake">New Take</button>
+      <button type="button" class="btn-apple-primary" style="flex:2;" id="btnExport">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Save Reel
+      </button>
+    </div>
+  </div>
+
+  <!-- Apple Glass Audio Control Popover / Bottom Sheet -->
+  <div class="audio-sheet-backdrop" id="audioSheetBackdrop">
+    <div class="audio-sheet" id="audioSheet">
+      <div class="audio-sheet-header">
+        <div class="audio-sheet-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+          <span>Audio Balance</span>
+        </div>
+        <button type="button" class="btn-close-sheet" id="btnCloseAudio" aria-label="Close Audio Settings">✕</button>
+      </div>
+
+      <div class="audio-channel-group">
+        <!-- Background Reel Volume (0% to 100%, responsive true exponential curve) -->
+        <div class="audio-row">
+          <div class="audio-row-top">
+            <span class="audio-row-label">
+              <span>🔊</span>
+              <span>Reel Clip Volume</span>
+            </span>
+            <span class="audio-row-value" id="valReel">50%</span>
+          </div>
+          <div class="audio-slider-wrap">
+            <button type="button" class="audio-icon-btn" id="btnMuteReel" title="Mute Reel Clip">
+              🔊
+            </button>
+            <input type="range" class="apple-range" id="sliderReel" min="0" max="100" value="50" step="1" />
+          </div>
+        </div>
+
+        <!-- Reaction Vocal Mic Volume (Boost up to 350% with vocal presence EQ) -->
+        <div class="audio-row">
+          <div class="audio-row-top">
+            <span class="audio-row-label">
+              <span>🎙</span>
+              <span>Your Reaction Voice</span>
+            </span>
+            <span class="audio-row-value" id="valMic">150%</span>
+          </div>
+          <div class="audio-slider-wrap">
+            <button type="button" class="audio-icon-btn" id="btnMuteMic" title="Mute Microphone">
+              🎙
+            </button>
+            <input type="range" class="apple-range" id="sliderMic" min="0" max="350" value="150" step="1" />
+          </div>
+        </div>
+
+        <!-- Live Vocal Level Visualizer Meter -->
+        <div class="mic-meter-container">
+          <span class="mic-meter-label">Mic Input:</span>
+          <div class="mic-meter-track">
+            <div class="mic-meter-fill" id="micMeterFill"></div>
+          </div>
+        </div>
+
+        <!-- Smart Voice Ducking Toggle -->
+        <div class="audio-toggle-row">
+          <div class="toggle-info">
+            <span class="toggle-label">Auto-Duck Background</span>
+            <span class="toggle-desc">Automatically drops clip audio while you speak</span>
+          </div>
+          <label class="ios-switch">
+            <input type="checkbox" id="checkDucking" checked />
+            <span class="ios-slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Message -->
+<div class="toast" id="toast"></div>
+
+<input type="file" accept="video/*" id="fileInput" class="offscreen">
+<video id="srcVideo" playsinline preload="auto" crossorigin="anonymous" class="offscreen"></video>
+<video id="camVideo" playsinline muted class="offscreen"></video>
+
+<script>
+(function () {
+  "use strict";
+
+  var W = 720, H = 1280;
+  var MIN_SIZE = 120, MAX_SIZE = 480;
+  var SIZE_CAP_BYTES = 40 * 1024 * 1024;
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  var canvas = $("stage"), ctx = canvas.getContext("2d");
+  var srcVideo = $("srcVideo"), camVideo = $("camVideo");
+  var ring = $("ring"), stageBox = $("stageBox");
+  var ingestCard = $("ingestCard"), reviewVideo = $("reviewVideo");
+  var recordPill = $("recordPill"), recordTimerText = $("recordTimerText");
+  var shapePillBar = $("shapePillBar"), shutterBar = $("shutterBar"), shutterBtn = $("shutterBtn");
+  var btnPauseReel = $("btnPauseReel"), btnCamToggle = $("btnCamToggle");
+  var reviewActions = $("reviewActions"), btnNewTake = $("btnNewTake"), btnExport = $("btnExport");
+  var btnChangeClip = $("btnChangeClip"), btnAudioHeader = $("btnAudioHeader"), btnAudioDock = $("btnAudioDock");
+  var tabUpload = $("tabUpload"), tabLink = $("tabLink"), tabSample = $("tabSample");
+  var panelUpload = $("panelUpload"), panelLink = $("panelLink"), panelSample = $("panelSample");
+  var btnPickFile = $("btnPickFile"), fileInput = $("fileInput");
+  var linkForm = $("linkForm"), linkInput = $("linkInput"), linkSubmitBtn = $("linkSubmitBtn");
+  var btnLinkSample1 = $("btnLinkSample1"), btnLinkSample2 = $("btnLinkSample2"), linkHelpText = $("linkHelpText");
+  var btnSample1 = $("btnSample1"), btnSample2 = $("btnSample2"), btnSample3 = $("btnSample3");
+  var toast = $("toast");
+
+  /* Audio Sheet Elements */
+  var audioSheetBackdrop = $("audioSheetBackdrop"), audioSheet = $("audioSheet"), btnCloseAudio = $("btnCloseAudio");
+  var sliderReel = $("sliderReel"), sliderMic = $("sliderMic");
+  var valReel = $("valReel"), valMic = $("valMic");
+  var btnMuteReel = $("btnMuteReel"), btnMuteMic = $("btnMuteMic");
+  var micMeterFill = $("micMeterFill"), checkDucking = $("checkDucking");
+
+  var overlay = { x: 440, y: 140, size: 230 };
+  var shape = "circle";
+  var stage = "pick"; // 'pick', 'stage', 'record', 'save'
+  var camReady = false, srcReady = false, recording = false, isSrcPaused = false, busy = false;
+  var camStream = null, recorder = null, chunks = [], bytes = 0;
+
+  /* Audio State & WebAudio Graph */
+  var audioCtx = null, audioDest = null, srcNode = null, micNode = null;
+  var srcGainNode = null, micGainNode = null, micPresenceNode = null, micHpFilter = null, masterCompressor = null;
+  var micAnalyser = null, micDataArray = null;
+  var reelRawPercent = 50;  // 0 to 100
+  var micRawPercent = 150;  // 0 to 350
+  var reelMuted = false, micMuted = false;
+  var isAutoDucking = true;
+  var duckingFactor = 1.0; // Current ducking factor
+
+  var startedAt = 0, timerId = 0, rafId = 0, toastTimeout = 0;
+  var outputBlob = null, outputUrl = null;
+  var downloads = null;
+
+  if (window.claude && typeof window.claude.use === "function") {
+    window.claude.use("downloads").then(function (d) { downloads = d; }).catch(function () {});
+  }
+
+  function notify(msg) {
+    if (toastTimeout) clearTimeout(toastTimeout);
+    toast.textContent = msg;
+    toast.classList.add("show");
+    toastTimeout = setTimeout(function () {
+      toast.classList.remove("show");
+    }, 2800);
+  }
+
+  /* ---------- Neural Selfie Segmentation ---------- */
+  var selfieSeg = null;
+  var segCanvas = document.createElement("canvas");
+  var segCtx = segCanvas.getContext("2d");
+  var latestMask = null;
+  var isSegRunning = false;
+
+  function initSelfieSegmentation() {
+    if (typeof SelfieSegmentation === "undefined") {
+      setTimeout(initSelfieSegmentation, 400);
+      return;
+    }
+    try {
+      selfieSeg = new SelfieSegmentation({
+        locateFile: function (file) {
+          return "https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/" + file;
+        }
+      });
+      selfieSeg.setOptions({ modelSelection: 1, selfieMode: true });
+      selfieSeg.onResults(function (results) {
+        isSegRunning = false;
+        if (results && results.segmentationMask) {
+          latestMask = results.segmentationMask;
+        }
+      });
+    } catch (e) {
+      console.warn("Selfie segmentation setup:", e);
+    }
+  }
+  initSelfieSegmentation();
+
+  function drawCutoutOverlay(targetCtx, x, y, size) {
+    if (!camVideo.videoWidth || !camVideo.videoHeight) return;
+    var cw = camVideo.videoWidth, chh = camVideo.videoHeight;
+    var side = Math.min(cw, chh);
+    var cx = (cw - side) / 2, cy = (chh - side) / 2;
+
+    if (selfieSeg && !isSegRunning && camVideo.readyState >= 2) {
+      isSegRunning = true;
+      selfieSeg.send({ image: camVideo }).catch(function () { isSegRunning = false; });
+    }
+
+    segCanvas.width = size;
+    segCanvas.height = size;
+    segCtx.clearRect(0, 0, size, size);
+
+    if (latestMask) {
+      segCtx.save();
+      segCtx.translate(size, 0);
+      segCtx.scale(-1, 1);
+      segCtx.drawImage(camVideo, cx, cy, side, side, 0, 0, size, size);
+      segCtx.restore();
+
+      segCtx.save();
+      segCtx.globalCompositeOperation = "destination-in";
+      segCtx.drawImage(latestMask, 0, 0, size, size);
+      segCtx.restore();
+    } else {
+      segCtx.save();
+      segCtx.translate(size, 0);
+      segCtx.scale(-1, 1);
+      segCtx.drawImage(camVideo, cx, cy, side, side, 0, 0, size, size);
+      segCtx.restore();
+
+      segCtx.save();
+      segCtx.globalCompositeOperation = "destination-in";
+      var grad = segCtx.createRadialGradient(size * 0.5, size * 0.44, size * 0.15, size * 0.5, size * 0.48, size * 0.48);
+      grad.addColorStop(0, "rgba(0,0,0,1)");
+      grad.addColorStop(0.75, "rgba(0,0,0,0.95)");
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      segCtx.fillStyle = grad;
+      segCtx.fillRect(0, 0, size, size);
+      segCtx.restore();
+    }
+
+    targetCtx.save();
+    targetCtx.shadowColor = "rgba(0, 0, 0, 0.65)";
+    targetCtx.shadowBlur = 24;
+    targetCtx.shadowOffsetX = 0;
+    targetCtx.shadowOffsetY = 6;
+    targetCtx.drawImage(segCanvas, x, y, size, size);
+    targetCtx.restore();
+  }
+
+  /* ---------- Canvas Render Loop & Audio Metering ---------- */
+
+  function clampOverlay() {
+    overlay.size = Math.max(MIN_SIZE, Math.min(MAX_SIZE, Math.round(overlay.size)));
+    overlay.x = Math.max(0, Math.min(W - overlay.size, overlay.x));
+    overlay.y = Math.max(0, Math.min(H - overlay.size, overlay.y));
+  }
+
+  function roundRectPath(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  function processAudioMeters() {
+    if (!micAnalyser || !micDataArray) return;
+    micAnalyser.getByteFrequencyData(micDataArray);
+
+    var sum = 0;
+    for (var i = 0; i < micDataArray.length; i++) {
+      sum += micDataArray[i];
+    }
+    var avg = sum / micDataArray.length;
+    var norm = Math.min(100, Math.round((avg / 128) * 100));
+
+    if (micMeterFill) {
+      micMeterFill.style.width = norm + "%";
+    }
+
+    // Dynamic voice ducking
+    if (isAutoDucking && srcGainNode && audioCtx) {
+      if (avg > 15 && !micMuted && camReady) {
+        // Voice is detected, duck reel background down to 20% of its volume
+        duckingFactor = 0.20;
+      } else {
+        duckingFactor = 1.0;
+      }
+      var targetGain = reelMuted ? 0 : (calculateReelGain(reelRawPercent) * duckingFactor);
+      srcGainNode.gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.06);
+    }
+  }
+
+  function draw() {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, W, H);
+
+    if (srcVideo.videoWidth && srcVideo.videoHeight) {
+      var s = Math.min(W / srcVideo.videoWidth, H / srcVideo.videoHeight);
+      var dw = srcVideo.videoWidth * s, dh = srcVideo.videoHeight * s;
+      ctx.drawImage(srcVideo, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    }
+
+    if (camVideo.readyState >= 2 && camVideo.videoWidth) {
+      var cw = camVideo.videoWidth, chh = camVideo.videoHeight;
+      var side = Math.min(cw, chh);
+      var cx = (cw - side) / 2, cy = (chh - side) / 2;
+      var r = overlay.size / 2;
+
+      if (shape === "cutout") {
+        drawCutoutOverlay(ctx, overlay.x, overlay.y, overlay.size);
+      } else {
+        ctx.save();
+        if (shape === "circle") {
+          ctx.beginPath();
+          ctx.arc(overlay.x + r, overlay.y + r, r, 0, Math.PI * 2);
+        } else {
+          roundRectPath(ctx, overlay.x, overlay.y, overlay.size, overlay.size, overlay.size * 0.16);
+        }
+        ctx.clip();
+        ctx.translate(overlay.x + overlay.size, overlay.y);
+        ctx.scale(-1, 1);
+        ctx.drawImage(camVideo, cx, cy, side, side, 0, 0, overlay.size, overlay.size);
+        ctx.restore();
+
+        // Apple style clean white border
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = "#FFFFFF";
+        if (shape === "circle") {
+          ctx.beginPath();
+          ctx.arc(overlay.x + r, overlay.y + r, r - 3, 0, Math.PI * 2);
+          ctx.stroke();
+        } else {
+          roundRectPath(ctx, overlay.x + 3, overlay.y + 3, overlay.size - 6, overlay.size - 6, overlay.size * 0.15);
+          ctx.stroke();
+        }
+      }
+    }
+
+    processAudioMeters();
+    rafId = requestAnimationFrame(draw);
+  }
+
+  function syncRing() {
+    ring.style.left = (overlay.x / W * 100) + "%";
+    ring.style.top = (overlay.y / H * 100) + "%";
+    ring.style.width = (overlay.size / W * 100) + "%";
+    ring.style.height = (overlay.size / H * 100) + "%";
+    ring.setAttribute("data-shape", shape);
+    ring.setAttribute("data-recording", recording ? "true" : "false");
+    ring.setAttribute("data-hidden", (!camReady || stage === "save" || stage === "pick") ? "true" : "false");
+  }
+
+  function show(el, on) { if (el) el.classList.toggle("hidden", !on); }
+
+  function render() {
+    show(ingestCard, stage === "pick");
+    show(btnChangeClip, stage !== "pick");
+    show(btnAudioHeader, stage !== "pick");
+    show(shapePillBar, stage === "stage" || stage === "record");
+    show(shutterBar, stage === "stage" || stage === "record");
+    show(recordPill, stage === "record");
+    show(reviewActions, stage === "save");
+    show(reviewVideo, stage === "save");
+    show(canvas, stage !== "save");
+
+    btnCamToggle.setAttribute("data-active", camReady ? "true" : "false");
+    btnPauseReel.setAttribute("data-active", isSrcPaused ? "true" : "false");
+    shutterBtn.setAttribute("data-rec", recording ? "true" : "false");
+
+    syncRing();
+  }
+
+  function fmtClock(sec) {
+    var m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+    return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+  }
+
+  /* ---------- Audio Adjustment Curves & Calculations ---------- */
+
+  // Perceptual audio curve for background reel (so 2% is actually whisper quiet)
+  function calculateReelGain(percent) {
+    if (percent <= 0) return 0;
+    // Power of 2.2 curve maps 0..100 to smooth human hearing curve
+    var normalized = percent / 100;
+    return Math.pow(normalized, 2.2);
+  }
+
+  // Vocal mic curve (supports massive amplification up to 350% with clean presence)
+  function calculateMicGain(percent) {
+    if (percent <= 0) return 0;
+    // 100% = 1.0 gain, 350% = 4.5 gain
+    var normalized = percent / 100;
+    if (normalized <= 1.0) {
+      return normalized;
+    }
+    return 1.0 + (normalized - 1.0) * 1.4;
+  }
+
+  function applyAudioGains() {
+    if (audioCtx && audioCtx.state === "suspended") {
+      audioCtx.resume();
+    }
+    if (srcGainNode && audioCtx) {
+      var rVal = reelMuted ? 0 : (calculateReelGain(reelRawPercent) * duckingFactor);
+      srcGainNode.gain.setTargetAtTime(rVal, audioCtx.currentTime, 0.04);
+    }
+    if (micGainNode && audioCtx) {
+      var mVal = micMuted ? 0 : calculateMicGain(micRawPercent);
+      micGainNode.gain.setTargetAtTime(mVal, audioCtx.currentTime, 0.04);
+    }
+    valReel.textContent = reelMuted ? "Muted" : reelRawPercent + "%";
+    valMic.textContent = micMuted ? "Muted" : micRawPercent + "%";
+    btnMuteReel.setAttribute("data-muted", reelMuted ? "true" : "false");
+    btnMuteReel.textContent = reelMuted ? "🔇" : "🔊";
+    btnMuteMic.setAttribute("data-muted", micMuted ? "true" : "false");
+    btnMuteMic.textContent = micMuted ? "🔇" : "🎙";
+  }
+
+  function openAudioSheet() {
+    buildAudio();
+    audioSheetBackdrop.classList.add("open");
+    btnAudioHeader.setAttribute("data-active", "true");
+    btnAudioDock.setAttribute("data-highlight", "true");
+  }
+
+  function closeAudioSheet() {
+    audioSheetBackdrop.classList.remove("open");
+    btnAudioHeader.setAttribute("data-active", "false");
+    btnAudioDock.setAttribute("data-highlight", "false");
+  }
+
+  btnAudioHeader.addEventListener("click", openAudioSheet);
+  btnAudioDock.addEventListener("click", openAudioSheet);
+  btnCloseAudio.addEventListener("click", closeAudioSheet);
+  audioSheetBackdrop.addEventListener("click", function (e) {
+    if (e.target === audioSheetBackdrop) closeAudioSheet();
+  });
+
+  sliderReel.addEventListener("input", function () {
+    reelRawPercent = parseInt(sliderReel.value, 10);
+    reelMuted = false;
+    applyAudioGains();
+  });
+
+  sliderMic.addEventListener("input", function () {
+    micRawPercent = parseInt(sliderMic.value, 10);
+    micMuted = false;
+    applyAudioGains();
+  });
+
+  btnMuteReel.addEventListener("click", function () {
+    reelMuted = !reelMuted;
+    applyAudioGains();
+  });
+
+  btnMuteMic.addEventListener("click", function () {
+    micMuted = !micMuted;
+    applyAudioGains();
+  });
+
+  checkDucking.addEventListener("change", function () {
+    isAutoDucking = checkDucking.checked;
+    duckingFactor = 1.0;
+    applyAudioGains();
+    notify(isAutoDucking ? "Auto-Ducking enabled" : "Auto-Ducking disabled");
+  });
+
+  /* ---------- Audio Graph (Professional Studio Dual-Track) ---------- */
+
+  function buildAudio() {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    if (!audioCtx) audioCtx = new AC();
+    if (!audioDest) audioDest = audioCtx.createMediaStreamDestination();
+
+    // Studio Limiter / Dynamics Processor to prevent distortion even at 350% vocal boost
+    if (!masterCompressor) {
+      masterCompressor = audioCtx.createDynamicsCompressor();
+      masterCompressor.threshold.setValueAtTime(-8, audioCtx.currentTime);
+      masterCompressor.knee.setValueAtTime(14, audioCtx.currentTime);
+      masterCompressor.ratio.setValueAtTime(4.0, audioCtx.currentTime);
+      masterCompressor.attack.setValueAtTime(0.002, audioCtx.currentTime);
+      masterCompressor.release.setValueAtTime(0.12, audioCtx.currentTime);
+      masterCompressor.connect(audioDest);
+    }
+
+    if (!srcGainNode) {
+      srcGainNode = audioCtx.createGain();
+      srcGainNode.gain.setValueAtTime(calculateReelGain(reelRawPercent), audioCtx.currentTime);
+      srcGainNode.connect(masterCompressor);
+      srcGainNode.connect(audioCtx.destination);
+    }
+
+    // Highpass filter removes low rumbling / wind noise
+    if (!micHpFilter) {
+      micHpFilter = audioCtx.createBiquadFilter();
+      micHpFilter.type = "highpass";
+      micHpFilter.frequency.setValueAtTime(90, audioCtx.currentTime);
+    }
+
+    // Vocal presence peaking EQ boosts speech clarity (2.8 kHz) so you cut through clearly
+    if (!micPresenceNode) {
+      micPresenceNode = audioCtx.createBiquadFilter();
+      micPresenceNode.type = "peaking";
+      micPresenceNode.frequency.setValueAtTime(2800, audioCtx.currentTime);
+      micPresenceNode.Q.setValueAtTime(1.2, audioCtx.currentTime);
+      micPresenceNode.gain.setValueAtTime(4.5, audioCtx.currentTime);
+    }
+
+    if (!micGainNode) {
+      micGainNode = audioCtx.createGain();
+      micGainNode.gain.setValueAtTime(calculateMicGain(micRawPercent), audioCtx.currentTime);
+      micGainNode.connect(masterCompressor);
+    }
+
+    if (!micAnalyser) {
+      micAnalyser = audioCtx.createAnalyser();
+      micAnalyser.fftSize = 64;
+      micAnalyser.smoothingTimeConstant = 0.6;
+      micDataArray = new Uint8Array(micAnalyser.frequencyBinCount);
+      micGainNode.connect(micAnalyser);
+    }
+
+    if (!srcNode && srcVideo) {
+      try {
+        srcNode = audioCtx.createMediaElementSource(srcVideo);
+        srcNode.connect(srcGainNode);
+      } catch (e) {}
+    }
+
+    if (!micNode && camStream) {
+      try {
+        micNode = audioCtx.createMediaStreamSource(camStream);
+        micNode.connect(micHpFilter);
+        micHpFilter.connect(micPresenceNode);
+        micPresenceNode.connect(micGainNode);
+      } catch (e) {}
+    }
+
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    applyAudioGains();
+    return audioDest;
+  }
+
+  /* ---------- Ingest Tabs ---------- */
+
+  tabUpload.addEventListener("click", function () {
+    tabUpload.setAttribute("aria-selected", "true");
+    tabLink.setAttribute("aria-selected", "false");
+    tabSample.setAttribute("aria-selected", "false");
+    show(panelUpload, true);
+    show(panelLink, false);
+    show(panelSample, false);
+  });
+
+  tabLink.addEventListener("click", function () {
+    tabLink.setAttribute("aria-selected", "true");
+    tabUpload.setAttribute("aria-selected", "false");
+    tabSample.setAttribute("aria-selected", "false");
+    show(panelUpload, false);
+    show(panelLink, true);
+    show(panelSample, false);
+    linkInput.focus();
+  });
+
+  tabSample.addEventListener("click", function () {
+    tabSample.setAttribute("aria-selected", "true");
+    tabUpload.setAttribute("aria-selected", "false");
+    tabLink.setAttribute("aria-selected", "false");
+    show(panelUpload, false);
+    show(panelLink, false);
+    show(panelSample, true);
+  });
+
+  /* ---------- Sample Preset Videos Generation ---------- */
+
+  function loadSyntheticSample(name, colorTheme) {
+    srcReady = false;
+    notify("Loading " + name + "…");
+
+    var sCanvas = document.createElement("canvas");
+    sCanvas.width = 720;
+    sCanvas.height = 1280;
+    var sCtx = sCanvas.getContext("2d");
+    var sStream = sCanvas.captureStream(30);
+
+    // Add synthesized background soundtrack for realistic reaction testing
+    var sAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    var sOsc = sAudioCtx.createOscillator();
+    var sGain = sAudioCtx.createGain();
+    sGain.gain.setValueAtTime(0.12, sAudioCtx.currentTime);
+    sOsc.frequency.setValueAtTime(colorTheme === "skate" ? 220 : colorTheme === "gaming" ? 330 : 180, sAudioCtx.currentTime);
+    sOsc.connect(sGain);
+    var sDest = sAudioCtx.createMediaStreamDestination();
+    sGain.connect(sDest);
+    sOsc.start();
+
+    var combinedTracks = sStream.getVideoTracks().concat(sDest.stream.getAudioTracks());
+    var sRecorder = new MediaRecorder(new MediaStream(combinedTracks), { mimeType: "video/webm" });
+    var sChunks = [];
+    sRecorder.ondataavailable = function (e) { if (e.data.size) sChunks.push(e.data); };
+    sRecorder.onstop = function () {
+      sOsc.stop();
+      var sBlob = new Blob(sChunks, { type: "video/webm" });
+      if (srcVideo.src) URL.revokeObjectURL(srcVideo.src);
+      srcVideo.src = URL.createObjectURL(sBlob);
+      srcVideo.load();
+      stage = "stage";
+      render();
+      if (!camReady) autoEnableCamera();
+    };
+
+    sRecorder.start();
+    var frame = 0;
+    var totalFrames = 150;
+    var sInterval = setInterval(function () {
+      frame++;
+      var grad = sCtx.createLinearGradient(0, 0, 720, 1280);
+      if (colorTheme === "skate") {
+        grad.addColorStop(0, "#FF453A");
+        grad.addColorStop(0.5, "#2C120C");
+        grad.addColorStop(1, "#000000");
+      } else if (colorTheme === "gaming") {
+        grad.addColorStop(0, "#BF5AF2");
+        grad.addColorStop(0.5, "#1C1427");
+        grad.addColorStop(1, "#000000");
+      } else {
+        grad.addColorStop(0, "#0A84FF");
+        grad.addColorStop(0.5, "#0D253F");
+        grad.addColorStop(1, "#000000");
+      }
+      sCtx.fillStyle = grad;
+      sCtx.fillRect(0, 0, 720, 1280);
+
+      sCtx.save();
+      sCtx.fillStyle = "rgba(255, 255, 255, 0.12)";
+      sCtx.beginPath();
+      sCtx.arc(360 + Math.sin(frame * 0.08) * 150, 640 + Math.cos(frame * 0.08) * 180, 110 + Math.sin(frame * 0.1) * 30, 0, Math.PI * 2);
+      sCtx.fill();
+      sCtx.restore();
+
+      sCtx.fillStyle = "#FFFFFF";
+      sCtx.font = "bold 44px -apple-system, BlinkMacSystemFont, sans-serif";
+      sCtx.textAlign = "center";
+      sCtx.fillText(name, 360, 590);
+      sCtx.font = "600 22px monospace";
+      sCtx.fillStyle = "rgba(255, 255, 255, 0.75)";
+      sCtx.fillText("DEMO REEL · 00:" + (frame < 30 ? "01" : frame < 60 ? "02" : frame < 90 ? "03" : frame < 120 ? "04" : "05"), 360, 640);
+
+      if (frame >= totalFrames) {
+        clearInterval(sInterval);
+        sRecorder.stop();
+      }
+    }, 33);
+  }
+
+  btnSample1.addEventListener("click", function () { loadSyntheticSample("🛹 Skate Clip", "skate"); });
+  btnSample2.addEventListener("click", function () { loadSyntheticSample("🎮 Gaming Play", "gaming"); });
+  btnSample3.addEventListener("click", function () { loadSyntheticSample("🌊 Ocean Vista", "ocean"); });
+
+  /* ---------- Video Source Loading ---------- */
+
+  btnPickFile.addEventListener("click", function () { fileInput.click(); });
+  btnChangeClip.addEventListener("click", function () {
+    if (recording) stopRecording();
+    stage = "pick";
+    render();
+  });
+
+  fileInput.addEventListener("change", function () {
+    var file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    srcReady = false;
+    if (srcVideo.src) URL.revokeObjectURL(srcVideo.src);
+    srcVideo.src = URL.createObjectURL(file);
+    srcVideo.load();
+    notify("Loaded " + file.name);
+    stage = "stage";
+    render();
+    if (!camReady) autoEnableCamera();
+  });
+
+  linkForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var url = (linkInput.value || "").trim();
+    if (!url) return;
+    notify("Fetching social video…");
+    linkSubmitBtn.disabled = true;
+
+    fetch("/api/import-media", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: url })
+    }).then(function (res) {
+      return res.json();
+    }).then(function (data) {
+      linkSubmitBtn.disabled = false;
+      if (!data || !data.success) throw new Error((data && data.error) || "Could not extract video.");
+      srcReady = false;
+      srcVideo.crossOrigin = "anonymous";
+      srcVideo.src = data.streamUrl || data.directUrl;
+      srcVideo.load();
+      notify("Video imported!");
+      stage = "stage";
+      render();
+      if (!camReady) autoEnableCamera();
+    }).catch(function (err) {
+      linkSubmitBtn.disabled = false;
+      notify("Link fetch failed. Try uploading a video file.");
+    });
+  });
+
+  function primeFirstFrame() {
+    srcVideo.muted = false;
+    var p = srcVideo.play();
+    if (p && p.then) {
+      p.then(function () {
+        setTimeout(function () {
+          srcVideo.pause();
+          srcVideo.currentTime = 0;
+        }, 140);
+      }).catch(function () {});
+    }
+  }
+
+  function onSrcReady() {
+    if (srcReady) return;
+    srcReady = true;
+    primeFirstFrame();
+  }
+
+  srcVideo.addEventListener("loadeddata", onSrcReady);
+  srcVideo.addEventListener("canplay", onSrcReady);
+
+  // Background clip ends: hold the final frame and loop/freeze instead of cutting off user reaction
+  srcVideo.addEventListener("ended", function () {
+    if (recording) {
+      notify("Background clip reached end (recording continues)");
+    }
+  });
+
+  /* ---------- Seamless Camera & Mic Setup ---------- */
+
+  function autoEnableCamera() {
+    if (camReady || busy) return;
+    enableCamera();
+  }
+
+  btnCamToggle.addEventListener("click", function () {
+    if (camReady) {
+      releaseCameraStream();
+      camReady = false;
+      notify("Camera disabled");
+      render();
+    } else {
+      enableCamera();
+    }
+  });
+
+  function releaseCameraStream() {
+    if (camStream) {
+      camStream.getTracks().forEach(function (t) {
+        t.stop();
+      });
+      camStream = null;
+    }
+    if (camVideo) {
+      camVideo.srcObject = null;
+    }
+    if (micNode) {
+      try { micNode.disconnect(); } catch (e) {}
+      micNode = null;
+    }
+  }
+
+  function enableCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      notify("Camera not supported in this browser.");
+      return;
+    }
+    busy = true;
+    // Standard audio constraints (no voiceCommunication so mobile OS routes to regular Media audio)
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 720 }, height: { ideal: 720 } },
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 1
+      }
+    }).then(function (stream) {
+      camStream = stream;
+      camVideo.srcObject = stream;
+      return camVideo.play();
+    }).then(function () {
+      camReady = true;
+      busy = false;
+      try { buildAudio(); } catch (e) {}
+      render();
+    }).catch(function (err) {
+      // Fallback with standard settings
+      navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true
+      }).then(function (stream) {
+        camStream = stream;
+        camVideo.srcObject = stream;
+        return camVideo.play();
+      }).then(function () {
+        camReady = true;
+        busy = false;
+        try { buildAudio(); } catch (e) {}
+        render();
+      }).catch(function (e) {
+        busy = false;
+        notify("Camera access blocked. Check browser permissions.");
+      });
+    });
+  }
+
+  /* ---------- Touch Gestures (Drag & Pinch to Resize) ---------- */
+
+  var pointers = {};
+  var lastPos = null, pinchStart = 0, pinchSize = 0;
+
+  function pointerList() {
+    var out = [];
+    for (var k in pointers) if (Object.prototype.hasOwnProperty.call(pointers, k)) out.push(pointers[k]);
+    return out;
+  }
+
+  function canvasScale() {
+    var box = canvas.getBoundingClientRect();
+    return box.width ? (W / box.width) : 1;
+  }
+
+  stageBox.addEventListener("pointerdown", function (e) {
+    if (!camReady) return;
+    stageBox.setPointerCapture(e.pointerId);
+    pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+    var list = pointerList();
+    if (list.length === 1) lastPos = { x: e.clientX, y: e.clientY };
+    else if (list.length === 2) {
+      pinchStart = Math.hypot(list[0].x - list[1].x, list[0].y - list[1].y);
+      pinchSize = overlay.size;
+      lastPos = null;
+    }
+  });
+
+  stageBox.addEventListener("pointermove", function (e) {
+    if (!pointers[e.pointerId]) return;
+    e.preventDefault();
+    pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+    var list = pointerList();
+    var k = canvasScale();
+
+    if (list.length >= 2) {
+      var dist = Math.hypot(list[0].x - list[1].x, list[0].y - list[1].y);
+      if (pinchStart > 0) {
+        overlay.size = pinchSize * (dist / pinchStart);
+        clampOverlay();
+        syncRing();
+      }
+      return;
+    }
+
+    if (lastPos) {
+      overlay.x += (e.clientX - lastPos.x) * k;
+      overlay.y += (e.clientY - lastPos.y) * k;
+      lastPos = { x: e.clientX, y: e.clientY };
+      clampOverlay();
+      syncRing();
+    }
+  });
+
+  function endPointer(e) {
+    delete pointers[e.pointerId];
+    var list = pointerList();
+    if (list.length === 1) { lastPos = { x: list[0].x, y: list[0].y }; pinchStart = 0; }
+    else if (list.length === 0) { lastPos = null; pinchStart = 0; }
+  }
+  stageBox.addEventListener("pointerup", endPointer);
+  stageBox.addEventListener("pointercancel", endPointer);
+
+  stageBox.addEventListener("wheel", function (e) {
+    if (!camReady) return;
+    e.preventDefault();
+    overlay.size -= e.deltaY * 0.4;
+    clampOverlay();
+    syncRing();
+  }, { passive: false });
+
+  /* ---------- Shape Selector ---------- */
+
+  $("shapeCircle").addEventListener("click", function () { setShape("circle"); });
+  $("shapeSquare").addEventListener("click", function () { setShape("square"); });
+  $("shapeCutout").addEventListener("click", function () { setShape("cutout"); });
+
+  function setShape(next) {
+    shape = next;
+    $("shapeCircle").setAttribute("aria-pressed", String(next === "circle"));
+    $("shapeSquare").setAttribute("aria-pressed", String(next === "square"));
+    $("shapeCutout").setAttribute("aria-pressed", String(next === "cutout"));
+    syncRing();
+  }
+
+  /* ---------- Apple Shutter Recording ---------- */
+
+  shutterBtn.addEventListener("click", function () {
+    if (recording) stopRecording();
+    else startRecording();
+  });
+
+  btnPauseReel.addEventListener("click", function () {
+    if (!recording) return;
+    if (isSrcPaused) {
+      srcVideo.play().then(function () {
+        isSrcPaused = false;
+        notify("Reel resumed");
+        render();
+      });
+    } else {
+      srcVideo.pause();
+      isSrcPaused = true;
+      notify("Reel paused · Keep reacting");
+      render();
+    }
+  });
+
+  function pickMime() {
+    var list = [
+      "video/mp4;codecs=h264,aac",
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm"
+    ];
+    for (var i = 0; i < list.length; i++) {
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported(list[i])) return list[i];
+    }
+    return "";
+  }
+
+  function startRecording() {
+    if (!camReady) {
+      enableCamera();
+      notify("Please allow camera to record");
+      return;
+    }
+    if (!srcReady || busy) return;
+
+    busy = true;
+    var dest;
+    try { dest = buildAudio(); } catch (err) { busy = false; return; }
+
+    isSrcPaused = false;
+    srcVideo.loop = false;
+    srcVideo.currentTime = 0;
+
+    srcVideo.play().then(function () {
+      var visual = canvas.captureStream(30);
+      var tracks = visual.getVideoTracks().concat(dest.stream.getAudioTracks());
+      var mime = pickMime();
+      var opts = { videoBitsPerSecond: 2800000 };
+      if (mime) opts.mimeType = mime;
+
+      recorder = new MediaRecorder(new MediaStream(tracks), opts);
+      chunks = [];
+      bytes = 0;
+
+      recorder.ondataavailable = function (e) {
+        if (!e.data || !e.data.size) return;
+        chunks.push(e.data);
+        bytes += e.data.size;
+        if (bytes >= SIZE_CAP_BYTES) stopRecording();
+      };
+
+      recorder.onstop = function () { finishRecording(); };
+
+      recorder.start(1000);
+      startedAt = Date.now();
+      recording = true;
+      busy = false;
+      stage = "record";
+      render();
+
+      timerId = setInterval(function () {
+        var t = fmtClock((Date.now() - startedAt) / 1000);
+        recordTimerText.textContent = t;
+      }, 250);
+    }).catch(function (err) {
+      busy = false;
+      notify("Error starting video clip");
+    });
+  }
+
+  function stopRecording() {
+    if (!recorder || recorder.state === "inactive") return;
+    recorder.stop();
+  }
+
+  function finishRecording() {
+    clearInterval(timerId);
+    recording = false;
+    isSrcPaused = false;
+    srcVideo.pause();
+
+    // Release live mic track in playback mode so the mobile OS exits VoIP call-mode and routes to Media Volume
+    releaseCameraStream();
+    camReady = false;
+
+    if (bytes < 2048) {
+      stage = "stage";
+      notify("Recording was too short");
+      render();
+      return;
+    }
+
+    outputBlob = new Blob(chunks, { type: (recorder && recorder.mimeType) || "video/webm" });
+    if (outputUrl) URL.revokeObjectURL(outputUrl);
+    outputUrl = URL.createObjectURL(outputBlob);
+    reviewVideo.src = outputUrl;
+
+    stage = "save";
+    render();
+  }
+
+  btnNewTake.addEventListener("click", function () {
+    stage = "stage";
+    render();
+    if (!camReady) autoEnableCamera();
+  });
+
+  /* ---------- Video Export / Save ---------- */
+
+  btnExport.addEventListener("click", function () {
+    if (!outputBlob) return;
+    var ext = (outputBlob.type && outputBlob.type.indexOf("mp4") !== -1) ? "mp4" : "webm";
+    var name = "reaction-" + Date.now() + "." + ext;
+
+    var file = null;
+    try { file = new File([outputBlob], name, { type: outputBlob.type }); } catch (e) {}
+
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file] }).catch(function () { triggerDownload(name); });
+      return;
+    }
+    triggerDownload(name);
+  });
+
+  function triggerDownload(name) {
+    if (downloads && typeof downloads.save === "function") {
+      downloads.save({ filename: name, data: outputBlob }).then(function () {
+        notify("Saved to device");
+      }).catch(function () { downloadAnchor(name); });
+      return;
+    }
+    downloadAnchor(name);
+  }
+
+  function downloadAnchor(name) {
+    var a = document.createElement("a");
+    a.href = outputUrl;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    notify("Downloading video…");
+  }
+
+  /* ---------- Startup ---------- */
+  setShape("circle");
+  clampOverlay();
+  stage = "pick";
+  render();
+  draw();
+
+  window.addEventListener("pagehide", function () {
+    if (rafId) cancelAnimationFrame(rafId);
+    releaseCameraStream();
+  });
+})();
+</script>
+</body>
+</html>
