@@ -57,7 +57,7 @@ export default function HomeScreen() {
       }
 
       const extension = asset.fileName?.match(/\.[a-z0-9]{2,5}$/i)?.[0] ?? ".mp4";
-      const localUri = `\( {FileSystem.cacheDirectory}reel-reactor-source- \){Date.now()}${extension}`;
+      const localUri = `${FileSystem.cacheDirectory}reel-reactor-source-${Date.now()}${extension}`;
       try {
         let readableSourceUri = asset.uri;
         if (Platform.OS === "ios" && readableSourceUri.startsWith("ph://")) {
