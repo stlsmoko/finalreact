@@ -1,6 +1,7 @@
 package expo.modules.selfiecutout
 
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.Matrix
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -43,37 +44,67 @@ internal object PersonCutout {
         val pixels = IntArray(width * height)
         out.getPixels(pixels, 0, width, 0, 0, width, height)
 
-        val ordered = buffer.duplicate().order(ByteOrder.nativeOrder())
+        val ordered = buffer.duplicate()
+        ordered.order(ByteOrder.nativeOrder())
         ordered.rewind()
         val maskCount = safeMaskWidth * safeMaskHeight
         val remaining = ordered.remaining()
-        val floatMask = remaining >= maskCount * 4
-        val byteMask = if (floatMask) null else ByteArray(maskCount.coerceAtMost(remaining))
-        byteMask?.let { ordered.get(it) }
+        val confidences = FloatArray(maskCount)
+        when {
+            remaining >= maskCount * 4 -> {
+                ordered.asFloatBuffer().get(confidences)
+            }
+            remaining >= maskCount -> {
+                val bytes = ByteArray(maskCount)
+                ordered.get(bytes)
+                for (i in 0 until maskCount) {
+                    confidences[i] = (bytes[i].toInt() and 0xFF) / 255f
+                }
+            }
+        }
 
+        var personPixels = 0
         for (y in 0 until height) {
             val maskY = (y * safeMaskHeight) / height
             val maskRow = maskY * safeMaskWidth
             val row = y * width
             for (x in 0 until width) {
                 val maskX = (x * safeMaskWidth) / width
-                val index = maskRow + maskX
-                val confidence = if (floatMask) {
-                    ordered.getFloat(index * 4).coerceIn(0f, 1f)
-                } else {
-                    val raw = byteMask?.getOrNull(index)?.toInt()?.and(0xFF) ?: 0
-                    raw / 255f
-                }
+                val confidence = confidences.getOrElse(maskRow + maskX) { 0f }.coerceIn(0f, 1f)
                 val color = pixels[row + x]
                 val alpha = when {
-                    confidence < 0.28f -> 0
-                    confidence < 0.72f -> (confidence * 255f).toInt().coerceIn(0, 255)
+                    confidence < 0.22f -> 0
+                    confidence < 0.62f -> ((confidence - 0.22f) / 0.40f * 255f).toInt().coerceIn(0, 255)
                     else -> 255
                 }
+                if (alpha > 16) personPixels += 1
                 pixels[row + x] = (alpha shl 24) or (color and 0x00FFFFFF)
             }
         }
+
+        // If ML Kit didn't see a person, keep the original frame so the bubble is never an empty hole.
+        if (personPixels < (width * height) / 80) {
+            return out
+        }
+
         out.setPixels(pixels, 0, width, 0, 0, width, height)
         return out
+    }
+
+    fun hasVisiblePerson(bitmap: Bitmap): Boolean {
+        val sample = minOf(bitmap.width, bitmap.height, 64).coerceAtLeast(8)
+        val stepX = (bitmap.width / sample).coerceAtLeast(1)
+        val stepY = (bitmap.height / sample).coerceAtLeast(1)
+        var visible = 0
+        var y = 0
+        while (y < bitmap.height) {
+            var x = 0
+            while (x < bitmap.width) {
+                if (Color.alpha(bitmap.getPixel(x, y)) > 24) visible += 1
+                x += stepX
+            }
+            y += stepY
+        }
+        return visible > 4
     }
 }

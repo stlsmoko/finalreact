@@ -586,6 +586,7 @@ export default function ReactionRecordScreen() {
               style={[
                 styles.bubbleOverlay,
                 bubbleCustomRadiusStyle,
+                overlayStyle === "cutout" ? styles.cutoutOverlay : null,
                 {
                   height: overlaySize,
                   left: overlayPosition.x,
@@ -595,6 +596,7 @@ export default function ReactionRecordScreen() {
                   borderColor: overlayStyle === "cutout" ? "transparent" : isRecording ? "rgba(255, 255, 255, 0.2)" : "rgba(255, 255, 255, 0.6)",
                 },
               ]}
+              needsOffscreenAlphaCompositing={overlayStyle === "cutout"}
             >
               {isFocused && cameraPermission?.granted ? (
                 <>
@@ -603,7 +605,9 @@ export default function ReactionRecordScreen() {
                       key={`cutout-${cameraInstanceKey}`}
                       facing={facing}
                       pointerEvents="none"
-                      style={[styles.cameraView, { backgroundColor: "transparent" }]}
+                      collapsable={false}
+                      needsOffscreenAlphaCompositing
+                      style={[styles.cameraView, styles.cutoutCamera]}
                       onReady={() => {
                         setIsCutoutReady(true);
                         setIsCameraReady(true);
@@ -766,7 +770,9 @@ const styles = StyleSheet.create({
   pillDot: { backgroundColor: "#FF3B30", borderRadius: 4, height: 8, width: 8 },
   recordTimerText: { color: "#FFFFFF", fontSize: 13, fontWeight: "600", letterSpacing: 0.2 },
   bubbleOverlay: { borderWidth: 1.5, elevation: 10, overflow: "hidden", position: "absolute", shadowColor: "#000000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.5, shadowRadius: 16, zIndex: 15 },
+  cutoutOverlay: { backgroundColor: "transparent", borderWidth: 0, elevation: 0, overflow: "visible", shadowOpacity: 0, shadowRadius: 0 },
   cameraView: { flex: 1, overflow: "hidden" },
+  cutoutCamera: { backgroundColor: "transparent", overflow: "visible" },
   interactionSurface: { ...StyleSheet.absoluteFillObject, backgroundColor: "transparent" },
   permissionOverlay: { alignItems: "center", backgroundColor: "#18181C", flex: 1, justifyContent: "center" },
   permissionText: { color: "#86868B", fontSize: 11, fontWeight: "600", marginTop: 4 },
