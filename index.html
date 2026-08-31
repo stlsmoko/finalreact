@@ -1005,7 +1005,7 @@
             <button type="button" class="audio-icon-btn" id="btnMuteReel" title="Mute Reel Clip">
               🔊
             </button>
-            <input type="range" class="apple-range" id="sliderReel" min="0" max="100" value="8" step="1" />
+            <input type="range" class="apple-range" id="sliderReel" min="0" max="100" value="12" step="1" />
           </div>
         </div>
 
@@ -1022,7 +1022,7 @@
             <button type="button" class="audio-icon-btn" id="btnMuteMic" title="Mute Microphone">
               🎙
             </button>
-            <input type="range" class="apple-range" id="sliderMic" min="0" max="350" value="280" step="1" />
+            <input type="range" class="apple-range" id="sliderMic" min="0" max="100" value="100" step="1" />
           </div>
         </div>
 
@@ -1100,8 +1100,8 @@
   var audioCtx = null, audioDest = null, srcNode = null, micNode = null;
   var srcGainNode = null, micGainNode = null, micPresenceNode = null, micHpFilter = null, masterCompressor = null;
   var micAnalyser = null, micDataArray = null;
-  var reelRawPercent = 8;  // 0 to 100
-  var micRawPercent = 280;  // 0 to 350
+  var reelRawPercent = 12;  // 0 to 100
+  var micRawPercent = 100;  // 0 to 100
   var reelMuted = false, micMuted = false;
   var isAutoDucking = true;
   var duckingFactor = 1.0; // Current ducking factor

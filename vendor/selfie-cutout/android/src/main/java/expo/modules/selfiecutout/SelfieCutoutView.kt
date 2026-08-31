@@ -2,6 +2,7 @@ package expo.modules.selfiecutout
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.media.AudioManager
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Handler
@@ -77,6 +78,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     private var facing = "front"
     private var bindAttempts = 0
     private var displayedBitmap: Bitmap? = null
+    private var savedAudioMode: Int? = null
 
     init {
         setBackgroundColor(Color.TRANSPARENT)
@@ -122,6 +124,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     override fun onDetachedFromWindow() {
         if (active === this) active = null
         stopRecordingInternal(errorMessage = "Cutout camera closed.")
+        restoreMediaAudio()
         cameraProvider?.unbindAll()
         super.onDetachedFromWindow()
     }
@@ -285,12 +288,14 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         val output = File(activity.cacheDir, "reel-reactor-cutout-${System.currentTimeMillis()}.mp4")
         recordingFile = output
         recordingPromise = promise
+        prepareMediaAudio()
         try {
             val pending = capture.output
                 .prepareRecording(activity, FileOutputOptions.Builder(output).build())
                 .withAudioEnabled()
                 .start(ContextCompat.getMainExecutor(context)) { event ->
                     if (event is VideoRecordEvent.Finalize) {
+                        restoreMediaAudio()
                         val pendingPromise = recordingPromise
                         recordingPromise = null
                         recording = null
@@ -313,6 +318,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
                 }
             recording = pending
         } catch (error: Exception) {
+            restoreMediaAudio()
             recordingPromise = null
             promise.reject("CUTOUT_RECORDING", error.message ?: "Could not start cutout recording.", error)
         }
@@ -320,6 +326,27 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
 
     fun stopRecording() {
         stopRecordingInternal()
+    }
+
+    private fun prepareMediaAudio() {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        savedAudioMode = audioManager.mode
+        try {
+            audioManager.mode = AudioManager.MODE_NORMAL
+            audioManager.isMicrophoneMute = false
+            audioManager.isSpeakerphoneOn = true
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun restoreMediaAudio() {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        val previous = savedAudioMode ?: return
+        try {
+            audioManager.mode = previous
+        } catch (_: Exception) {
+        }
+        savedAudioMode = null
     }
 
     private fun stopRecordingInternal(errorMessage: String? = null) {

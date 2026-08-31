@@ -136,8 +136,8 @@ export default function ReactionRecordScreen() {
   const [isCutoutReady, setIsCutoutReady] = useState(false);
 
   const [isAudioSheetOpen, setIsAudioSheetOpen] = useState(false);
-  const [reelVolume, setReelVolume] = useState(8);
-  const [micVolume, setMicVolume] = useState(280);
+  const [reelVolume, setReelVolume] = useState(12);
+  const [micVolume, setMicVolume] = useState(100);
   const [isReelMuted, setIsReelMuted] = useState(false);
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [isAutoDucking, setIsAutoDucking] = useState(true);
@@ -182,16 +182,16 @@ export default function ReactionRecordScreen() {
     }
   }, [observedSourceTime]);
 
-  const effectiveReelGain = isReelMuted ? 0 : reelVolume / 100;
-  const effectiveMicGain = isMicMuted ? 0 : Math.max(0, Math.min(12, (micVolume / 100) * 4));
+  const effectiveReelGain = isReelMuted ? 0 : (reelVolume / 100) * 0.2;
+  const effectiveMicGain = isMicMuted ? 0 : (micVolume / 100) * 28;
   const sourceAudioGainRef = useRef(effectiveReelGain);
   const reactionAudioGainRef = useRef(effectiveMicGain);
 
   useEffect(() => {
-    sourceAudioGainRef.current = isAutoDucking ? effectiveReelGain * 0.35 : effectiveReelGain;
+    sourceAudioGainRef.current = effectiveReelGain;
     reactionAudioGainRef.current = effectiveMicGain;
     if (!isSourcePaused && !isCompositing) {
-      playerRef.current.volume = sourceAudioGainRef.current;
+      playerRef.current.volume = isAutoDucking ? effectiveReelGain * 0.5 : effectiveReelGain;
     }
   }, [effectiveMicGain, effectiveReelGain, isAutoDucking, isCompositing, isSourcePaused]);
 
@@ -228,7 +228,7 @@ export default function ReactionRecordScreen() {
   useEffect(() => {
     if (Platform.OS === "web") return;
     setAudioModeAsync({
-      allowsRecording: true,
+      allowsRecording: false,
       interruptionMode: "mixWithOthers",
       playsInSilentMode: true,
       shouldRouteThroughEarpiece: false,
@@ -454,7 +454,7 @@ export default function ReactionRecordScreen() {
     setRecordingElapsedSeconds(0);
     if (Platform.OS !== "web") {
       await setAudioModeAsync({
-        allowsRecording: true,
+        allowsRecording: false,
         interruptionMode: "mixWithOthers",
         playsInSilentMode: true,
         shouldRouteThroughEarpiece: false,
@@ -735,7 +735,7 @@ export default function ReactionRecordScreen() {
                       <Text style={styles.audioIconBtnText}>{isMicMuted ? "🔇" : "🎙"}</Text>
                     </Pressable>
                     <View style={styles.sliderContainer}>
-                      <AppleAudioSlider value={isMicMuted ? 0 : micVolume} max={350} onChange={(val) => { setMicVolume(val); if (isMicMuted) setIsMicMuted(false); }} />
+                      <AppleAudioSlider value={isMicMuted ? 0 : micVolume} max={100} onChange={(val) => { setMicVolume(val); if (isMicMuted) setIsMicMuted(false); }} />
                     </View>
                   </View>
                 </View>
