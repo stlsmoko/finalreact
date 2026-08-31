@@ -115,14 +115,17 @@ describe("composite command", () => {
       maskPattern: "file:///cache/masks/mask_%05d.png",
       maskFps: 8,
     });
-    expect(masked.filter).toContain("[2:v]scale=244:244:force_original_aspect_ratio=increase,crop=244:244,setsar=1,format=rgba[reaction]");
+    expect(masked.filter).toContain("[2:v]fps=30,setpts=PTS-STARTPTS,scale=244:244:force_original_aspect_ratio=increase,crop=244:244,setsar=1,format=rgba[reaction]");
     expect(masked.filter).not.toContain("[1:v]scale=244:244");
     expect(masked.filter).not.toContain("chromakey=0x00FF00");
+    expect(masked.filter).toContain("repeatlast=1");
     expect(masked.args).toEqual(expect.arrayContaining([
       "-f", "image2",
       "-framerate", "8",
       "-start_number", "1",
       "-i", "/cache/masks/mask_%05d.png",
+      "-r", "30",
+      "-bf", "0",
     ]));
 
     const fallback = buildCompositeCommand({ ...baseRequest, overlayStyle: "cutout" });

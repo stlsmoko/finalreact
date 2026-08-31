@@ -374,7 +374,11 @@ export default function ReactionRecordScreen() {
     try {
       playerRef.current.volume = 0;
       player.pause();
-      cameraRef.current?.stopRecording();
+      if (SelfieCutoutNative.SelfieCutoutView) {
+        SelfieCutoutNative.stopRecording?.();
+      } else {
+        cameraRef.current?.stopRecording();
+      }
     } catch (error) {
       stopRequestedRef.current = false;
       setRecordingStatus(
@@ -415,10 +419,11 @@ export default function ReactionRecordScreen() {
       setRecordingStatus("Camera and microphone permission are required before recording can start.");
       return;
     }
+    const nativeCutout = Boolean(SelfieCutoutNative.SelfieCutoutView);
     const recordingBlocker = getRecordingStartBlocker({
       platform: Platform.OS,
       cameraReady: isCameraReady,
-      hasCameraRef: Boolean(cameraRef.current),
+      hasCameraRef: nativeCutout ? isCameraReady : Boolean(cameraRef.current),
     });
     if (recordingBlocker) {
       setRecordingStatus(recordingBlocker);
@@ -429,7 +434,7 @@ export default function ReactionRecordScreen() {
       return;
     }
     const camera = cameraRef.current;
-    if (!camera) {
+    if (!nativeCutout && !camera) {
       setCameraStatus("starting");
       setRecordingStatus("Camera preview is not ready yet.");
       return;
@@ -455,7 +460,8 @@ export default function ReactionRecordScreen() {
     try {
       setRecordingStatus(`Recording reaction… Tap shutter to stop.`);
       const recorded = await beginReactionCameraRecording({
-        startCameraRecording: () => camera.recordAsync(),
+        startCameraRecording: () =>
+          nativeCutout ? SelfieCutoutNative.startRecording() : camera!.recordAsync(),
         startSourcePlayback: async () => {
           player.currentTime = 0;
           sourceTimeRef.current = 0;
@@ -599,25 +605,47 @@ export default function ReactionRecordScreen() {
             >
               {isFocused && cameraPermission?.granted ? (
                 <>
-                  <CameraView
-                    key={cameraInstanceKey}
-                    ref={cameraRef}
-                    style={[styles.cameraView, overlayStyle === "cutout" ? styles.cutoutCamera : bubbleCustomRadiusStyle]}
-                    pointerEvents="none"
-                    facing={facing}
-                    mode="video"
-                    mute={false}
-                    onCameraReady={() => {
-                      setIsCameraReady(true);
-                      setIsCutoutReady(true);
-                      setCameraStatus("ready");
-                    }}
-                    onMountError={() => {
-                      setIsCameraReady(false);
-                      setIsCutoutReady(false);
-                      setCameraStatus("error");
-                    }}
-                  />
+                  {SelfieCutoutNative.SelfieCutoutView ? (
+                    <SelfieCutoutNative.SelfieCutoutView
+                      key={`live-${cameraInstanceKey}`}
+                      facing={facing}
+                      isolatePerson={overlayStyle === "cutout"}
+                      pointerEvents="none"
+                      collapsable={false}
+                      needsOffscreenAlphaCompositing={overlayStyle === "cutout"}
+                      style={[styles.cameraView, overlayStyle === "cutout" ? styles.cutoutCamera : bubbleCustomRadiusStyle]}
+                      onReady={() => {
+                        setIsCameraReady(true);
+                        setIsCutoutReady(true);
+                        setCameraStatus("ready");
+                      }}
+                      onError={() => {
+                        setIsCameraReady(false);
+                        setIsCutoutReady(false);
+                        setCameraStatus("error");
+                      }}
+                    />
+                  ) : (
+                    <CameraView
+                      key={cameraInstanceKey}
+                      ref={cameraRef}
+                      style={[styles.cameraView, overlayStyle === "cutout" ? styles.cutoutCamera : bubbleCustomRadiusStyle]}
+                      pointerEvents="none"
+                      facing={facing}
+                      mode="video"
+                      mute={false}
+                      onCameraReady={() => {
+                        setIsCameraReady(true);
+                        setIsCutoutReady(true);
+                        setCameraStatus("ready");
+                      }}
+                      onMountError={() => {
+                        setIsCameraReady(false);
+                        setIsCutoutReady(false);
+                        setCameraStatus("error");
+                      }}
+                    />
+                  )}
                   <View collapsable={false} pointerEvents="none" style={[styles.interactionSurface, bubbleCustomRadiusStyle]} />
                 </>
               ) : (

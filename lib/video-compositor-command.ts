@@ -135,7 +135,7 @@ function buildReactionFilters(
 
   if (overlayStyle === "cutout" && hasPersonMask) {
     return [
-      `[2:v]scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=increase,crop=${overlaySize}:${overlaySize},setsar=1,format=rgba[reaction]`,
+      `[2:v]fps=30,setpts=PTS-STARTPTS,scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=increase,crop=${overlaySize}:${overlaySize},setsar=1,format=rgba[reaction]`,
     ];
   }
 
@@ -179,12 +179,13 @@ export function buildCompositeCommand(
   const sourceAudioLabel = stopDurationSec ? "[source_audio_trimmed]" : "[source_audio]";
   const reactionAudioPrefix = stopDurationSec ? `[1:a]atrim=duration=${stopDurationSec},` : "[1:a]";
   const overlayEofAction = stopDurationSec ? "pass" : "endall";
+  const overlayRepeatLast = hasPersonMask ? 1 : 0;
   const mixDuration = stopDurationSec ? "longest" : "shortest";
   const filter = [
     ...buildSourceTimelineFilters(request.sourcePauses),
     ...reactionFilters,
     ...timelineFilters,
-    `${backgroundLabel}${reactionLabel}overlay=${overlay.x}:${overlay.y}:eof_action=${overlayEofAction}:repeatlast=0:format=auto[video]`,
+    `${backgroundLabel}${reactionLabel}overlay=${overlay.x}:${overlay.y}:eof_action=${overlayEofAction}:repeatlast=${overlayRepeatLast}:format=auto[video]`,
     `${sourceAudioLabel}volume=${sourceAudioGain}[source_audio_scaled]`,
     `${reactionAudioPrefix}aresample=48000,volume=2.8,alimiter=limit=0.95[reaction_audio]`,
     `[source_audio_scaled][reaction_audio]amix=inputs=2:duration=${mixDuration}:dropout_transition=0:normalize=0,alimiter=limit=0.96[audio]`,
@@ -201,8 +202,11 @@ export function buildCompositeCommand(
     "-map", "[video]",
     "-map", "[audio]",
     "-c:v", "mpeg4",
-    "-q:v", "4",
+    "-q:v", "5",
+    "-bf", "0",
+    "-r", "30",
     "-pix_fmt", "yuv420p",
+    "-movflags", "+faststart",
     "-c:a", "aac",
     ...(stopDurationSec ? ["-t", stopDurationSec] : ["-shortest"]),
     request.outputPath,

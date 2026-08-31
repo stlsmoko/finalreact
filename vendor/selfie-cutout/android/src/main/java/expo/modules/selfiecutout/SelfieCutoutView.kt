@@ -48,6 +48,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     private val analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val analyzing = AtomicBoolean(false)
     private val readyOnce = AtomicBoolean(false)
+    private val isolatePerson = AtomicBoolean(false)
 
     // Keep a live 1px TextureView so CameraX always has a surface. Hidden off the overlay.
     private val previewView = PreviewView(context).apply {
@@ -93,6 +94,10 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
                 .enableRawSizeMask()
                 .build()
         )
+    }
+
+    fun setIsolatePerson(enabled: Boolean) {
+        isolatePerson.set(enabled)
     }
 
     fun setFacing(nextFacing: String) {
@@ -230,14 +235,17 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         }
         client.process(image)
             .addOnSuccessListener { mask ->
-                val cutout = PersonCutout.applyConfidenceMask(working, mask.buffer, mask.width, mask.height)
-                val display = if (cutout === working) {
-                    cutout.copy(Bitmap.Config.ARGB_8888, false) ?: cutout
+                val display = if (isolatePerson.get()) {
+                    val cutout = PersonCutout.applyConfidenceMask(working, mask.buffer, mask.width, mask.height)
+                    if (cutout === working) {
+                        cutout.copy(Bitmap.Config.ARGB_8888, false) ?: cutout
+                    } else {
+                        cutout
+                    }
                 } else {
-                    cutout
+                    working.copy(Bitmap.Config.ARGB_8888, false) ?: working
                 }
-                if (cutout !== working) working.recycle()
-                else if (display !== cutout) working.recycle()
+                if (display !== working && !working.isRecycled) working.recycle()
                 showBitmap(display)
             }
             .addOnFailureListener { error ->

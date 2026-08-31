@@ -16,6 +16,9 @@ export type CutoutRecordingResult = {
 
 export type SelfieCutoutViewProps = {
   facing?: "front" | "back" | string;
+  isolatePerson?: boolean;
+  collapsable?: boolean;
+  needsOffscreenAlphaCompositing?: boolean;
   style?: StyleProp<ViewStyle>;
   pointerEvents?: "none" | "box-none" | "box-only" | "auto";
   onReady?: () => void;

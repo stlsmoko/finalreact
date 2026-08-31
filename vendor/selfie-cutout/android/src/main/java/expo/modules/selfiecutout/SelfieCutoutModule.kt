@@ -32,6 +32,9 @@ class SelfieCutoutModule : Module() {
             Prop("facing") { view: SelfieCutoutView, facing: String? ->
                 view.setFacing(facing ?: "front")
             }
+            Prop("isolatePerson") { view: SelfieCutoutView, isolate: Boolean? ->
+                view.setIsolatePerson(isolate == true)
+            }
         }
 
         AsyncFunction("startRecording") { promise: Promise ->
@@ -210,8 +213,8 @@ class SelfieCutoutModule : Module() {
 
     companion object {
         private const val TAG = "SelfieCutout"
-        private const val MASK_FPS_SHORT = 6.0
-        private const val MASK_FPS_LONG = 5.0
+        private const val MASK_FPS_SHORT = 12.0
+        private const val MASK_FPS_LONG = 10.0
         private const val MAX_FRAMES = 180
     }
 }
