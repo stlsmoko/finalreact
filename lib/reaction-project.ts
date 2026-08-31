@@ -20,14 +20,56 @@ export function validateSourceVideo(input: {
   return null;
 }
 
-export function normalizeSharedLink(value: string): string | null {
-  const candidate = value.trim();
+const BARE_SOCIAL_PATH =
+  /(?:www\.)?(?:facebook\.com|fb\.watch|fb\.com|instagram\.com|instagr\.am|tiktok\.com|youtube\.com|youtu\.be|x\.com|twitter\.com|threads\.net|reddit\.com|redd\.it)\/[^\s<>"']+/i;
+
+function cleanUrlCandidate(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^[\'"`<(]+/, "")
+    .replace(/[\'"`)>]+$/, "")
+    .replace(/[),.;!?]+$/g, "")
+    .replace(/\\+$/g, "")
+    .trim();
+}
+
+function asHttpUrl(value: string): string | null {
   try {
-    const parsed = new URL(candidate);
-    return parsed.protocol === "https:" || parsed.protocol === "http:" ? parsed.toString() : null;
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    return parsed.toString();
   } catch {
     return null;
   }
+}
+
+/**
+ * Accepts a bare URL or messy share text from Facebook, Instagram, TikTok, X, YouTube, and similar apps.
+ */
+export function normalizeSharedLink(value: string): string | null {
+  const text = value.replace(/\u00a0/g, " ").trim();
+  if (!text) return null;
+
+  const candidates: string[] = [];
+  const matches = text.match(/https?:\/\/[^\s<>"']+/gi);
+  if (matches) candidates.push(...matches);
+
+  if (!candidates.length) {
+    const bare = text.match(BARE_SOCIAL_PATH);
+    if (bare?.[0]) candidates.push(`https://${bare[0].replace(/^\/\//, "")}`);
+  }
+
+  if (!candidates.length) {
+    const direct = asHttpUrl(cleanUrlCandidate(text));
+    if (direct) return direct;
+    return null;
+  }
+
+  for (const raw of candidates) {
+    const direct = asHttpUrl(cleanUrlCandidate(raw));
+    if (direct) return direct;
+  }
+  return null;
 }
 
 export function getRecordingStartBlocker(input: {
@@ -58,11 +100,6 @@ export function beginReactionCameraRecording<T>(input: {
   return recordingPromise;
 }
 
-/**
- * The browser prototype stops its recording when the source clip ends. The
- * native studio keeps the same rule, but only while the camera recorder is
- * active and a stop has not already been requested by the creator.
- */
 export function shouldStopReactionForSourceEnd(input: {
   isRecording: boolean;
   isCompositing: boolean;
@@ -85,10 +122,6 @@ export function clampOverlay(
   };
 }
 
-/**
- * Matches expo-video's `contentFit="contain"` rectangle. Keeping this mapping
- * pure means the mobile preview and the FFmpeg export can use the same geometry.
- */
 export function getContainedVideoRect(
   container: { width: number; height: number },
   video: { width?: number; height?: number },
