@@ -51,8 +51,11 @@ jobs:
           if [ -d /tmp/donor/vendor/ffmpeg-expo/plugin ]; then cp -a /tmp/donor/vendor/ffmpeg-expo/plugin node_modules/ffmpeg-expo/; fi
           if [ -d /tmp/donor/vendor/ffmpeg-expo/build ]; then cp -a /tmp/donor/vendor/ffmpeg-expo/build node_modules/ffmpeg-expo/; fi
           if [ -d /tmp/donor/vendor/reel-importer/build ]; then cp -a /tmp/donor/vendor/reel-importer/build node_modules/reel-importer/; fi
-          if [ -d vendor/reel-importer/build ]; then cp -a vendor/reel-importer/build node_modules/reel-importer/; fi
-          if [ -d vendor/selfie-cutout ]; then cp -a vendor/selfie-cutout/. node_modules/selfie-cutout/; fi
+          if [ -d vendor/reel-importer/build ] && [ ! -L node_modules/reel-importer ]; then cp -a vendor/reel-importer/build node_modules/reel-importer/; fi
+          if [ -d vendor/selfie-cutout ] && [ ! -e node_modules/selfie-cutout/build/index.js ]; then
+            mkdir -p node_modules/selfie-cutout
+            cp -a vendor/selfie-cutout/. node_modules/selfie-cutout/
+          fi
           if [ ! -f assets/images/icon.png ] && [ -f assets/images/android-icon-foreground.png ]; then cp assets/images/android-icon-foreground.png assets/images/icon.png; fi
           if [ ! -f assets/images/splash-icon.png ] && [ -f assets/images/android-icon-foreground.png ]; then cp assets/images/android-icon-foreground.png assets/images/splash-icon.png; fi
           if [ ! -f assets/images/favicon.png ] && [ -f assets/images/android-icon-foreground.png ]; then cp assets/images/android-icon-foreground.png assets/images/favicon.png; fi
