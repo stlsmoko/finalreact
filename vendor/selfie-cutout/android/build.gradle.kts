@@ -34,4 +34,10 @@ android {
 
 dependencies {
     implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta6")
+    implementation("androidx.camera:camera-core:1.4.2")
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-video:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
+    implementation("androidx.core:core-ktx:1.13.1")
 }

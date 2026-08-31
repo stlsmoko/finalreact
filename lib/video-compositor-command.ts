@@ -135,9 +135,7 @@ function buildReactionFilters(
 
   if (overlayStyle === "cutout" && hasPersonMask) {
     return [
-      `${reactionBase},format=rgba[reaction_rgba]`,
-      `[2:v]scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=increase,crop=${overlaySize}:${overlaySize},setsar=1,format=gray[reaction_alpha]`,
-      "[reaction_rgba][reaction_alpha]alphamerge[reaction]",
+      `[2:v]scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=increase,crop=${overlaySize}:${overlaySize},setsar=1,format=rgba[reaction]`,
     ];
   }
 

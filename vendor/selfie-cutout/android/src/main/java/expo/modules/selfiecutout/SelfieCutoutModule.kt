@@ -1,7 +1,6 @@
 package expo.modules.selfiecutout
 
 import android.graphics.Bitmap
-import android.graphics.Color
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
@@ -28,12 +27,32 @@ class SelfieCutoutModule : Module() {
     override fun definition() = ModuleDefinition {
         Name("SelfieCutout")
 
+        View(SelfieCutoutView::class) {
+            Events("onReady", "onError")
+            Prop("facing") { view: SelfieCutoutView, facing: String? ->
+                view.setFacing(facing ?: "front")
+            }
+        }
+
+        AsyncFunction("startRecording") { promise: Promise ->
+            val view = SelfieCutoutView.active
+            if (view == null) {
+                promise.reject("CUTOUT_CAMERA", "Cutout camera is not open.", null)
+            } else {
+                view.startRecording(promise)
+            }
+        }
+
+        AsyncFunction("stopRecording") {
+            SelfieCutoutView.active?.stopRecording()
+        }
+
         AsyncFunction("createPersonMask") { videoUri: String, promise: Promise ->
             scope.launch {
                 try {
                     promise.resolve(createPersonMask(videoUri))
                 } catch (error: Exception) {
-                    Log.e(TAG, "Person mask failed", error)
+                    Log.e(TAG, "Person cutout frames failed", error)
                     promise.reject(
                         "SELFIE_CUTOUT_FAILED",
                         error.message ?: "Could not isolate the person from this camera recording.",
@@ -72,47 +91,48 @@ class SelfieCutoutModule : Module() {
 
             val outputDir = File(context.cacheDir, "reel-reactor-cutout-${System.currentTimeMillis()}")
             if (!outputDir.mkdirs()) {
-                throw IllegalStateException("Could not create a folder for the cutout mask.")
+                throw IllegalStateException("Could not create a folder for the cutout frames.")
             }
 
             var frameIndex = 0
             var timeUs = 0L
-            var lastMask: Bitmap? = null
+            var lastCutout: Bitmap? = null
 
             while (timeUs <= lastTimeUs || frameIndex == 0) {
                 val frame = getFrame(retriever, timeUs)
                 if (frame != null) {
-                    val working = scaleForModel(frame)
-                    if (working !== frame) {
-                        frame.recycle()
-                    }
-                    lastMask = segmentToMask(segmenter, working, lastMask)
-                    working.recycle()
-                } else if (lastMask == null) {
+                    val square = PersonCutout.centerCropSquare(frame)
+                    if (square !== frame) frame.recycle()
+                    val working = PersonCutout.asSoftwareArgb(square)
+                    if (working !== square) square.recycle()
+                    val image = InputImage.fromBitmap(working, 0)
+                    val mask = Tasks.await(segmenter.process(image), 8, TimeUnit.SECONDS)
+                    val cutout = PersonCutout.applyConfidenceMask(working, mask.buffer, mask.width, mask.height)
+                    if (cutout !== working) working.recycle()
+                    lastCutout?.recycle()
+                    lastCutout = cutout
+                } else if (lastCutout == null) {
                     throw IllegalStateException("The camera recording could not be decoded for cutout.")
                 }
 
                 frameIndex += 1
-                val maskFile = File(outputDir, "mask_%05d.png".format(frameIndex))
-                writePng(lastMask!!, maskFile)
+                val cutoutFile = File(outputDir, "cutout_%05d.png".format(frameIndex))
+                writePng(lastCutout!!, cutoutFile)
 
                 if (lastTimeUs == 0L) break
                 val nextTime = timeUs + frameIntervalUs
-                if (nextTime > lastTimeUs && timeUs < lastTimeUs) {
-                    timeUs = lastTimeUs
-                } else {
-                    timeUs = nextTime
-                }
+                timeUs = if (nextTime > lastTimeUs && timeUs < lastTimeUs) lastTimeUs else nextTime
                 if (frameIndex >= MAX_FRAMES) break
             }
 
             if (frameIndex == 0) {
-                throw IllegalStateException("Cutout did not produce any person masks.")
+                throw IllegalStateException("Cutout did not produce any person frames.")
             }
 
+            lastCutout?.recycle()
             return mapOf(
                 "directory" to "file://${outputDir.absolutePath}",
-                "pattern" to "${outputDir.absolutePath}/mask_%05d.png",
+                "pattern" to "${outputDir.absolutePath}/cutout_%05d.png",
                 "fps" to fps,
                 "frameCount" to frameIndex
             )
@@ -145,78 +165,22 @@ class SelfieCutoutModule : Module() {
 
     private fun getFrame(retriever: MediaMetadataRetriever, timeUs: Long): Bitmap? {
         return if (Build.VERSION.SDK_INT >= 27) {
-            retriever.getScaledFrameAtTime(
-                timeUs,
-                MediaMetadataRetriever.OPTION_CLOSEST,
-                MODEL_SIZE,
-                MODEL_SIZE
-            )
+            retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
         } else {
             retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
         }
     }
 
-    private fun scaleForModel(source: Bitmap): Bitmap {
-        val needsCopy = source.config != Bitmap.Config.ARGB_8888 ||
-            (Build.VERSION.SDK_INT >= 26 && source.config == Bitmap.Config.HARDWARE)
-        val converted = if (!needsCopy) {
-            source
-        } else {
-            source.copy(Bitmap.Config.ARGB_8888, false)
-                ?: throw IllegalStateException("Could not copy a camera frame for cutout.")
-        }
-        val side = maxOf(converted.width, converted.height).coerceAtLeast(1)
-        if (converted.width <= MODEL_SIZE && converted.height <= MODEL_SIZE && converted === source) {
-            return converted
-        }
-        val scaled = Bitmap.createScaledBitmap(
-            converted,
-            (converted.width * MODEL_SIZE) / side,
-            (converted.height * MODEL_SIZE) / side,
-            true
-        )
-        if (converted !== source && converted !== scaled) {
-            converted.recycle()
-        }
-        return scaled
-    }
-
-    private fun segmentToMask(segmenter: com.google.mlkit.vision.segmentation.Segmenter, frame: Bitmap, previous: Bitmap?): Bitmap {
-        val image = InputImage.fromBitmap(frame, 0)
-        val result = Tasks.await(segmenter.process(image), 8, TimeUnit.SECONDS)
-        val buffer = result.buffer
-        buffer.rewind()
-        val width = result.width
-        val height = result.height
-        val pixels = IntArray(width * height)
-        var personPixels = 0
-        for (index in pixels.indices) {
-            val confidence = buffer.get().toInt() and 0xFF
-            if (confidence > 24) personPixels += 1
-            pixels[index] = Color.argb(255, confidence, confidence, confidence)
-        }
-        val coverage = personPixels.toFloat() / pixels.size.toFloat()
-        if (coverage < 0.02f && previous != null) {
-            return previous
-        }
-
-        val mask = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        mask.setPixels(pixels, 0, width, 0, 0, width, height)
-        previous?.recycle()
-        return mask
-    }
-
     private fun writePng(bitmap: Bitmap, file: File) {
         FileOutputStream(file).use { stream ->
             if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
-                throw IllegalStateException("Could not write a cutout mask frame.")
+                throw IllegalStateException("Could not write a cutout frame.")
             }
         }
     }
 
     companion object {
         private const val TAG = "SelfieCutout"
-        private const val MODEL_SIZE = 256
         private const val MASK_FPS_SHORT = 12.0
         private const val MASK_FPS_LONG = 8.0
         private const val MAX_FRAMES = 360

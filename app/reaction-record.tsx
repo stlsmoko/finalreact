@@ -31,6 +31,7 @@ import {
 } from "@/lib/reaction-project";
 import { getCurrentSource, setCurrentReaction, setCurrentSource } from "@/lib/reaction-session";
 import { composeReactionVideo } from "@/lib/video-compositor";
+import SelfieCutoutNative from "selfie-cutout";
 
 const MIN_OVERLAY_SIZE = 96;
 const MAX_OVERLAY_SIZE = 220;
@@ -132,6 +133,7 @@ export default function ReactionRecordScreen() {
   const [overlaySize, setOverlaySize] = useState(140);
   const [overlayPosition, setOverlayPosition] = useState<OverlayPosition>({ x: width - 160, y: 80 });
   const [overlayStyle, setOverlayStyle] = useState<OverlayStyle>("circle");
+  const [isCutoutReady, setIsCutoutReady] = useState(false);
 
   const [isAudioSheetOpen, setIsAudioSheetOpen] = useState(false);
   const [reelVolume, setReelVolume] = useState(50); // 0 to 100
@@ -157,6 +159,7 @@ export default function ReactionRecordScreen() {
   const sourcePausesRef = useRef<SourcePause[]>([]);
   const isRecordingRef = useRef(false);
   const isCompositingRef = useRef(false);
+  const overlayStyleRef = useRef<OverlayStyle>(overlayStyle);
   const stopRequestedRef = useRef(false);
   const recordingStartedAtMsRef = useRef<number | null>(null);
   const recordingStopDurationSecRef = useRef<number | null>(null);
@@ -196,6 +199,10 @@ export default function ReactionRecordScreen() {
   useEffect(() => {
     isCompositingRef.current = isCompositing;
   }, [isCompositing]);
+
+  useEffect(() => {
+    overlayStyleRef.current = overlayStyle;
+  }, [overlayStyle]);
 
   useEffect(() => {
     if (!isRecording) return;
@@ -370,7 +377,11 @@ export default function ReactionRecordScreen() {
     try {
       playerRef.current.volume = 0;
       player.pause();
-      cameraRef.current?.stopRecording();
+      if (overlayStyleRef.current === "cutout") {
+        SelfieCutoutNative.stopRecording?.();
+      } else {
+        cameraRef.current?.stopRecording();
+      }
     } catch (error) {
       stopRequestedRef.current = false;
       setRecordingStatus(
@@ -412,10 +423,11 @@ export default function ReactionRecordScreen() {
       setRecordingStatus("Camera and microphone permission are required before recording can start.");
       return;
     }
+    const usingCutout = overlayStyle === "cutout";
     const recordingBlocker = getRecordingStartBlocker({
       platform: Platform.OS,
-      cameraReady: isCameraReady,
-      hasCameraRef: Boolean(cameraRef.current),
+      cameraReady: usingCutout ? isCutoutReady : isCameraReady,
+      hasCameraRef: usingCutout ? isCutoutReady : Boolean(cameraRef.current),
     });
     if (recordingBlocker) {
       setRecordingStatus(recordingBlocker);
@@ -427,7 +439,7 @@ export default function ReactionRecordScreen() {
     }
 
     const camera = cameraRef.current;
-    if (!camera) {
+    if (!usingCutout && !camera) {
       setCameraStatus("starting");
       setRecordingStatus("Camera preview is not ready yet.");
       return;
@@ -455,7 +467,8 @@ export default function ReactionRecordScreen() {
     try {
       setRecordingStatus(`Recording reaction… Tap shutter to stop.`);
       const recorded = await beginReactionCameraRecording({
-        startCameraRecording: () => camera.recordAsync(),
+        startCameraRecording: () =>
+          usingCutout ? SelfieCutoutNative.startRecording() : camera!.recordAsync(),
         startSourcePlayback: async () => {
           player.currentTime = 0;
           sourceTimeRef.current = 0;
@@ -533,6 +546,7 @@ export default function ReactionRecordScreen() {
 
   function handleFlipCamera() {
     setIsCameraReady(false);
+    setIsCutoutReady(false);
     setCameraStatus("starting");
     setCameraInstanceKey((k) => k + 1);
     setFacing((cur) => (cur === "front" ? "back" : "front"));
@@ -550,10 +564,8 @@ export default function ReactionRecordScreen() {
   const bubbleCustomRadiusStyle =
     overlayStyle === "cutout"
       ? {
-          borderTopLeftRadius: overlaySize / 2,
-          borderTopRightRadius: overlaySize / 2,
-          borderBottomLeftRadius: overlaySize * 0.4,
-          borderBottomRightRadius: overlaySize * 0.4,
+          borderRadius: 0,
+          backgroundColor: "transparent",
         }
       : {
           borderRadius: bubbleBorderRadius,
@@ -638,23 +650,42 @@ export default function ReactionRecordScreen() {
             >
               {isFocused && cameraPermission?.granted ? (
                 <>
-                  <CameraView
-                    key={cameraInstanceKey}
-                    ref={cameraRef}
-                    style={[styles.cameraView, bubbleCustomRadiusStyle]}
-                    pointerEvents="none"
-                    facing={facing}
-                    mode="video"
-                    mute={false}
-                    onCameraReady={() => {
-                      setIsCameraReady(true);
-                      setCameraStatus("ready");
-                    }}
-                    onMountError={(error) => {
-                      setIsCameraReady(false);
-                      setCameraStatus("error");
-                    }}
-                  />
+                  {overlayStyle === "cutout" && SelfieCutoutNative.SelfieCutoutView ? (
+                    <SelfieCutoutNative.SelfieCutoutView
+                      key={`cutout-${cameraInstanceKey}`}
+                      facing={facing}
+                      pointerEvents="none"
+                      style={[styles.cameraView, { backgroundColor: "transparent" }]}
+                      onReady={() => {
+                        setIsCutoutReady(true);
+                        setIsCameraReady(true);
+                        setCameraStatus("ready");
+                      }}
+                      onError={() => {
+                        setIsCutoutReady(false);
+                        setIsCameraReady(false);
+                        setCameraStatus("error");
+                      }}
+                    />
+                  ) : (
+                    <CameraView
+                      key={cameraInstanceKey}
+                      ref={cameraRef}
+                      style={[styles.cameraView, bubbleCustomRadiusStyle]}
+                      pointerEvents="none"
+                      facing={facing}
+                      mode="video"
+                      mute={false}
+                      onCameraReady={() => {
+                        setIsCameraReady(true);
+                        setCameraStatus("ready");
+                      }}
+                      onMountError={() => {
+                        setIsCameraReady(false);
+                        setCameraStatus("error");
+                      }}
+                    />
+                  )}
                   <View collapsable={false} pointerEvents="none" style={[styles.interactionSurface, bubbleCustomRadiusStyle]} />
                 </>
               ) : (
@@ -672,7 +703,13 @@ export default function ReactionRecordScreen() {
           {/* Overlay Shape Floating Pill */}
           <View style={styles.shapePillBar}>
             <Pressable
-              onPress={() => setOverlayStyle("circle")}
+              onPress={() => {
+                if (isRecording) return;
+                setIsCameraReady(false);
+                setIsCutoutReady(false);
+                setCameraStatus("starting");
+                setOverlayStyle("circle");
+              }}
               style={[styles.shapeItem, overlayStyle === "circle" && styles.shapeItemActive]}
             >
               <Text style={[styles.shapeItemText, overlayStyle === "circle" && styles.shapeItemTextActive]}>
@@ -680,7 +717,13 @@ export default function ReactionRecordScreen() {
               </Text>
             </Pressable>
             <Pressable
-              onPress={() => setOverlayStyle("square")}
+              onPress={() => {
+                if (isRecording) return;
+                setIsCameraReady(false);
+                setIsCutoutReady(false);
+                setCameraStatus("starting");
+                setOverlayStyle("square");
+              }}
               style={[styles.shapeItem, overlayStyle === "square" && styles.shapeItemActive]}
             >
               <Text style={[styles.shapeItemText, overlayStyle === "square" && styles.shapeItemTextActive]}>
@@ -688,7 +731,13 @@ export default function ReactionRecordScreen() {
               </Text>
             </Pressable>
             <Pressable
-              onPress={() => setOverlayStyle("cutout")}
+              onPress={() => {
+                if (isRecording) return;
+                setIsCameraReady(false);
+                setIsCutoutReady(false);
+                setCameraStatus("starting");
+                setOverlayStyle("cutout");
+              }}
               style={[styles.shapeItem, overlayStyle === "cutout" && styles.shapeItemActive]}
             >
               <Text style={[styles.shapeItemText, overlayStyle === "cutout" && styles.shapeItemTextActive]}>

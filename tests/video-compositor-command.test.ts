@@ -115,8 +115,8 @@ describe("composite command", () => {
       maskPattern: "file:///cache/masks/mask_%05d.png",
       maskFps: 8,
     });
-    expect(masked.filter).toContain("[2:v]scale=244:244:force_original_aspect_ratio=increase,crop=244:244,setsar=1,format=gray[reaction_alpha]");
-    expect(masked.filter).toContain("[reaction_rgba][reaction_alpha]alphamerge[reaction]");
+    expect(masked.filter).toContain("[2:v]scale=244:244:force_original_aspect_ratio=increase,crop=244:244,setsar=1,format=rgba[reaction]");
+    expect(masked.filter).not.toContain("[1:v]scale=244:244");
     expect(masked.filter).not.toContain("chromakey=0x00FF00");
     expect(masked.args).toEqual(expect.arrayContaining([
       "-f", "image2",
