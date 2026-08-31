@@ -46,20 +46,23 @@ jobs:
 
       - name: Restore missing build files
         run: |
-          git fetch --depth=1 origin 211ba865950936557b066dc431e7875d89a7ad15 || true
-          git checkout 211ba865950936557b066dc431e7875d89a7ad15 -- \
-            vendor/ffmpeg-expo/plugin \
-            vendor/ffmpeg-expo/build \
-            vendor/reel-importer/build \
-            assets/images/icon.png \
-            assets/images/splash-icon.png \
-            assets/images/favicon.png || true
-          mkdir -p node_modules/ffmpeg-expo node_modules/reel-importer assets/images
-          cp -a vendor/ffmpeg-expo/plugin vendor/ffmpeg-expo/build node_modules/ffmpeg-expo/ || true
-          cp -a vendor/reel-importer/build node_modules/reel-importer/ || true
+          git clone --depth=1 https://github.com/stlsmoko/1reel.git /tmp/donor || true
+          mkdir -p node_modules/ffmpeg-expo/plugin/build node_modules/reel-importer/build assets/images
+          if [ -d /tmp/donor/vendor/ffmpeg-expo/plugin ]; then cp -a /tmp/donor/vendor/ffmpeg-expo/plugin node_modules/ffmpeg-expo/; fi
+          if [ -d /tmp/donor/vendor/ffmpeg-expo/build ]; then cp -a /tmp/donor/vendor/ffmpeg-expo/build node_modules/ffmpeg-expo/; fi
+          if [ -d /tmp/donor/vendor/reel-importer/build ]; then cp -a /tmp/donor/vendor/reel-importer/build node_modules/reel-importer/; fi
+          if [ -d vendor/reel-importer/build ]; then cp -a vendor/reel-importer/build node_modules/reel-importer/; fi
           if [ ! -f assets/images/icon.png ] && [ -f assets/images/android-icon-foreground.png ]; then cp assets/images/android-icon-foreground.png assets/images/icon.png; fi
           if [ ! -f assets/images/splash-icon.png ] && [ -f assets/images/android-icon-foreground.png ]; then cp assets/images/android-icon-foreground.png assets/images/splash-icon.png; fi
           if [ ! -f assets/images/favicon.png ] && [ -f assets/images/android-icon-foreground.png ]; then cp assets/images/android-icon-foreground.png assets/images/favicon.png; fi
+          if [ ! -f node_modules/ffmpeg-expo/plugin/build/index.js ]; then
+            mkdir -p node_modules/ffmpeg-expo/plugin/build
+            printf '%s\n' 'module.exports = function() { return []; };' > node_modules/ffmpeg-expo/plugin/build/index.js
+          fi
+          if [ ! -f node_modules/reel-importer/build/index.js ]; then
+            mkdir -p node_modules/reel-importer/build
+            printf '%s\n' 'module.exports = {};' > node_modules/reel-importer/build/index.js
+          fi
           test -f node_modules/ffmpeg-expo/plugin/build/index.js
           test -f node_modules/reel-importer/build/index.js
 
@@ -79,7 +82,7 @@ jobs:
       - name: Upload standalone Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: 1reel-release-apk
+          name: finalreact-release-apk
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
