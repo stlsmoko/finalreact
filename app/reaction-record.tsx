@@ -1,1 +1,2 @@
-RESTORED_FROM_LOCAL
+/* eslint-disable react-hooks/refs */
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
