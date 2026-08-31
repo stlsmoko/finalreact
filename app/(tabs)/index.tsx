@@ -18,7 +18,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { normalizeSharedLink, validateSourceVideo } from "@/lib/reaction-project";
 import { setCurrentSharedLink, setCurrentSource } from "@/lib/reaction-session";
 
-type IngestTab = "upload" | "link" | "sample";
+type IngestTab = "upload" | "link";
 
 export default function HomeScreen() {
   const [activeTab, setActiveTab] = useState<IngestTab>("upload");
@@ -26,7 +26,6 @@ export default function HomeScreen() {
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [linkDraft, setLinkDraft] = useState("");
   const [linkError, setLinkError] = useState<string | null>(null);
-  const [isLoadingSample, setIsLoadingSample] = useState(false);
 
   async function handleSelectAsset(asset: ImagePicker.ImagePickerAsset) {
     const message = validateSourceVideo(asset);
@@ -137,50 +136,6 @@ export default function HomeScreen() {
     router.push({ pathname: "/shared-link", params: { url: sharedUrl } } as never);
   }
 
-  async function loadSample(name: string, sampleUri: string) {
-    setIsLoadingSample(true);
-    try {
-      if (Platform.OS === "web") {
-        setCurrentSource({
-          uri: sampleUri,
-          name,
-          durationMs: 15000,
-          width: 720,
-          height: 1280,
-        });
-        router.push("/reaction-record" as never);
-        return;
-      }
-
-      if (sampleUri.startsWith("http://") || sampleUri.startsWith("https://")) {
-        const localUri = `${FileSystem.cacheDirectory}sample-${Date.now()}.mp4`;
-        const downloadRes = await FileSystem.downloadAsync(sampleUri, localUri);
-        setCurrentSource({
-          uri: downloadRes.uri,
-          name,
-          durationMs: 15000,
-          width: 720,
-          height: 1280,
-        });
-        router.push("/reaction-record" as never);
-        return;
-      }
-
-      setCurrentSource({
-        uri: sampleUri,
-        name,
-        durationMs: 15000,
-        width: 720,
-        height: 1280,
-      });
-      router.push("/reaction-record" as never);
-    } catch {
-      Alert.alert("Sample unavailable", "Could not load sample video. Try choosing a video from your library.");
-    } finally {
-      setIsLoadingSample(false);
-    }
-  }
-
   return (
     <ScreenContainer edges={["top", "bottom", "left", "right"]} containerClassName="bg-black" safeAreaClassName="bg-black">
       <View style={styles.appContainer}>
@@ -203,7 +158,7 @@ export default function HomeScreen() {
             <View style={styles.ingestCard}>
               <Text style={styles.ingestTitle}>Select Reaction Clip</Text>
               <Text style={styles.ingestDesc}>
-                Choose a video from your library, paste a social link, or test with a sample.
+                Choose a video from your library or paste a social link.
               </Text>
 
               {/* Segmented Ingest Picker */}
@@ -222,14 +177,6 @@ export default function HomeScreen() {
                 >
                   <Text style={[styles.segBtnText, activeTab === "link" && styles.segBtnTextActive]}>
                     Link
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setActiveTab("sample")}
-                  style={[styles.segBtn, activeTab === "sample" && styles.segBtnActive]}
-                >
-                  <Text style={[styles.segBtnText, activeTab === "sample" && styles.segBtnTextActive]}>
-                    Demo
                   </Text>
                 </Pressable>
               </View>
@@ -279,28 +226,6 @@ export default function HomeScreen() {
                     </View>
                     {linkError ? <Text style={styles.errorText}>{linkError}</Text> : null}
 
-                    <View style={styles.sampleRow}>
-                      <Pressable
-                        onPress={() =>
-                          importByLink(
-                            "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
-                          )
-                        }
-                        style={({ pressed }) => [styles.btnSampleChipSmall, pressed && styles.btnPressed]}
-                      >
-                        <Text style={styles.btnSampleChipTextSmall}>🌸 Sample MP4</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() =>
-                          importByLink(
-                            "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
-                          )
-                        }
-                        style={({ pressed }) => [styles.btnSampleChipSmall, pressed && styles.btnPressed]}
-                      >
-                        <Text style={styles.btnSampleChipTextSmall}>🛹 Action Clip</Text>
-                      </Pressable>
-                    </View>
 
                     <Text style={styles.linkHelpText}>
                       Supports Direct MP4, Google Drive, Dropbox, X/Twitter, TikTok, & web video links.
@@ -308,51 +233,6 @@ export default function HomeScreen() {
                   </View>
                 ) : null}
 
-                {activeTab === "sample" ? (
-                  <View style={styles.panelSample}>
-                    <View style={styles.sampleRow}>
-                      <Pressable
-                        disabled={isLoadingSample}
-                        onPress={() =>
-                          loadSample(
-                            "🛹 Skate Clip",
-                            "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
-                          )
-                        }
-                        style={({ pressed }) => [styles.btnSampleChip, (pressed || isLoadingSample) && styles.btnPressed]}
-                      >
-                        <Text style={styles.btnSampleChipText}>🛹 Skate</Text>
-                      </Pressable>
-                      <Pressable
-                        disabled={isLoadingSample}
-                        onPress={() =>
-                          loadSample(
-                            "🎮 Gaming Play",
-                            "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
-                          )
-                        }
-                        style={({ pressed }) => [styles.btnSampleChip, (pressed || isLoadingSample) && styles.btnPressed]}
-                      >
-                        <Text style={styles.btnSampleChipText}>🎮 Gaming</Text>
-                      </Pressable>
-                      <Pressable
-                        disabled={isLoadingSample}
-                        onPress={() =>
-                          loadSample(
-                            "🌊 Ocean Vista",
-                            "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4"
-                          )
-                        }
-                        style={({ pressed }) => [styles.btnSampleChip, (pressed || isLoadingSample) && styles.btnPressed]}
-                      >
-                        <Text style={styles.btnSampleChipText}>🌊 Ocean</Text>
-                      </Pressable>
-                    </View>
-                    {isLoadingSample ? (
-                      <Text style={styles.loadingSampleText}>Preparing sample clip…</Text>
-                    ) : null}
-                  </View>
-                ) : null}
               </View>
             </View>
           </ScrollView>
@@ -526,56 +406,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
-  sampleRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 4,
-    width: "100%",
-  },
-  btnSampleChipSmall: {
-    alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    borderRadius: 12,
-    borderWidth: 1,
-    flex: 1,
-    justifyContent: "center",
-    paddingVertical: 8,
-  },
-  btnSampleChipTextSmall: {
-    color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: "600",
-  },
   linkHelpText: {
     color: "rgba(255, 255, 255, 0.6)",
     fontSize: 11,
     lineHeight: 15,
-    marginTop: 4,
-    textAlign: "center",
-  },
-  panelSample: {
-    gap: 10,
-    width: "100%",
-  },
-  btnSampleChip: {
-    alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    borderRadius: 12,
-    borderWidth: 1,
-    flex: 1,
-    justifyContent: "center",
-    paddingVertical: 12,
-  },
-  btnSampleChipText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  loadingSampleText: {
-    color: "#86868B",
-    fontSize: 11,
     marginTop: 4,
     textAlign: "center",
   },

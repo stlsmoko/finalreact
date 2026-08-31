@@ -41,7 +41,7 @@ describe("composite command", () => {
     expect(command.filter).toContain("[background][reaction]overlay=");
     expect(command.filter).toContain("[reaction_rgba][reaction_alpha]alphamerge[reaction]");
     expect(command.filter).toContain("[source_audio]volume=0.12[source_audio_scaled]");
-    expect(command.filter).toContain("[1:a]aresample=48000,volume=2.8,alimiter=limit=0.95[reaction_audio]");
+    expect(command.filter).toContain("[1:a]aresample=48000,volume=6.5,alimiter=limit=0.98[reaction_audio]");
     expect(command.filter).toContain("amix=inputs=2:duration=shortest:dropout_transition=0:normalize=0,alimiter=limit=0.96[audio]");
     expect(command.filter).toContain("pad=720:1280");
     expect(command.filter).toContain("[0:v]scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[background]");
@@ -64,7 +64,9 @@ describe("composite command", () => {
     expect(buildCompositeCommand({ ...baseRequest, sourceAudioGain: 0.9 }).filter).toContain("[source_audio]volume=0.9[source_audio_scaled]");
     expect(buildCompositeCommand({ ...baseRequest, sourceAudioGain: -0.1 }).filter).toContain("[source_audio]volume=0[source_audio_scaled]");
     expect(buildCompositeCommand({ ...baseRequest, sourceAudioGain: 2 }).filter).toContain("[source_audio]volume=1[source_audio_scaled]");
-    expect(buildCompositeCommand({ ...baseRequest, sourceAudioGain: 0.24 }).filter).toContain("volume=2.8");
+    expect(buildCompositeCommand({ ...baseRequest, sourceAudioGain: 0.24 }).filter).toContain("volume=6.5");
+    expect(buildCompositeCommand({ ...baseRequest, reactionAudioGain: 7 }).filter).toContain("volume=7,alimiter=limit=0.98[reaction_audio]");
+    expect(buildCompositeCommand({ ...baseRequest, reactionAudioGain: 20 }).filter).toContain("volume=9,alimiter=limit=0.98[reaction_audio]");
   });
 
   it("trims the final video and audio to the captured Stop time", () => {

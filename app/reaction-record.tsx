@@ -136,8 +136,8 @@ export default function ReactionRecordScreen() {
   const [isCutoutReady, setIsCutoutReady] = useState(false);
 
   const [isAudioSheetOpen, setIsAudioSheetOpen] = useState(false);
-  const [reelVolume, setReelVolume] = useState(50);
-  const [micVolume, setMicVolume] = useState(150);
+  const [reelVolume, setReelVolume] = useState(18);
+  const [micVolume, setMicVolume] = useState(220);
   const [isReelMuted, setIsReelMuted] = useState(false);
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [isAutoDucking, setIsAutoDucking] = useState(true);
@@ -183,14 +183,17 @@ export default function ReactionRecordScreen() {
   }, [observedSourceTime]);
 
   const effectiveReelGain = isReelMuted ? 0 : reelVolume / 100;
+  const effectiveMicGain = isMicMuted ? 0 : Math.max(0, Math.min(9, (micVolume / 100) * 3));
   const sourceAudioGainRef = useRef(effectiveReelGain);
+  const reactionAudioGainRef = useRef(effectiveMicGain);
 
   useEffect(() => {
-    sourceAudioGainRef.current = effectiveReelGain;
+    sourceAudioGainRef.current = isAutoDucking ? effectiveReelGain * 0.7 : effectiveReelGain;
+    reactionAudioGainRef.current = effectiveMicGain;
     if (!isSourcePaused && !isCompositing) {
-      playerRef.current.volume = effectiveReelGain;
+      playerRef.current.volume = sourceAudioGainRef.current;
     }
-  }, [effectiveReelGain, isCompositing, isSourcePaused]);
+  }, [effectiveMicGain, effectiveReelGain, isAutoDucking, isCompositing, isSourcePaused]);
 
   useEffect(() => {
     isRecordingRef.current = isRecording;
@@ -205,13 +208,13 @@ export default function ReactionRecordScreen() {
   }, [overlayStyle]);
 
   useEffect(() => {
-    if (!isRecording) return;
+    if (!isRecording || isCompositing) return;
     const startedAt = Date.now();
     const timer = setInterval(() => {
       setRecordingElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
     }, 1000);
     return () => clearInterval(timer);
-  }, [isRecording]);
+  }, [isCompositing, isRecording]);
 
   useEffect(() => {
     if (!source) router.replace("/");
@@ -371,6 +374,7 @@ export default function ReactionRecordScreen() {
       ? Math.max(0.1, (Date.now() - recordingStartedAtMs) / 1000)
       : null;
     setRecordingStatus(reason);
+    setIsRecording(false);
     try {
       playerRef.current.volume = 0;
       player.pause();
@@ -405,6 +409,7 @@ export default function ReactionRecordScreen() {
 
   async function toggleRecording() {
     recordAttempt.current += 1;
+    if (isCompositing || stopRequestedRef.current) return;
     if (isRecording) {
       requestStopRecording("Finishing and rendering your reaction…");
       return;
@@ -496,6 +501,7 @@ export default function ReactionRecordScreen() {
           sourcePauses: completedSourcePauses,
           stopDurationSec: finalDurationSec,
           sourceAudioGain: sourceAudioGainRef.current,
+          reactionAudioGain: reactionAudioGainRef.current,
           onProgress: (processedMs) =>
             setRecordingStatus(`Rendering video… ${Math.floor(processedMs / 1000)}s processed`),
         });
@@ -578,7 +584,7 @@ export default function ReactionRecordScreen() {
         <View style={styles.viewportWrapper}>
           <View style={styles.stageBox}>
             <VideoView style={StyleSheet.absoluteFill} player={player} contentFit="cover" nativeControls={false} surfaceType="textureView" />
-            {isRecording ? (
+            {isRecording && !isCompositing ? (
               <View style={styles.recordPill}>
                 <View style={styles.pillDot} />
                 <Text style={styles.recordTimerText}>{formatRecordingTime(recordingElapsedSeconds)}</Text>

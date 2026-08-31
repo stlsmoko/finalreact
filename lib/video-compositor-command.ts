@@ -8,6 +8,7 @@ export type CompositeGeometry = {
   sourcePauses?: { sourceTimeSec: number; durationSec: number }[];
   stopDurationSec?: number;
   sourceAudioGain?: number;
+  reactionAudioGain?: number;
 };
 
 function toFfmpegPath(uri: string) {
@@ -165,7 +166,10 @@ export function buildCompositeCommand(
     : null;
   const sourceAudioGain = Number.isFinite(request.sourceAudioGain)
     ? seconds(Math.max(0, Math.min(1, request.sourceAudioGain as number)))
-    : "0.12";
+    : "0.18";
+  const reactionAudioGain = Number.isFinite(request.reactionAudioGain)
+    ? seconds(Math.max(0, Math.min(9, request.reactionAudioGain as number)))
+    : "6.5";
   const reactionFilters = buildReactionFilters(overlayStyle, overlay.size, hasPersonMask);
   const timelineFilters = stopDurationSec
     ? [
@@ -187,7 +191,7 @@ export function buildCompositeCommand(
     ...timelineFilters,
     `${backgroundLabel}${reactionLabel}overlay=${overlay.x}:${overlay.y}:eof_action=${overlayEofAction}:repeatlast=${overlayRepeatLast}:format=auto[video]`,
     `${sourceAudioLabel}volume=${sourceAudioGain}[source_audio_scaled]`,
-    `${reactionAudioPrefix}aresample=48000,volume=2.8,alimiter=limit=0.95[reaction_audio]`,
+    `${reactionAudioPrefix}aresample=48000,volume=${reactionAudioGain},alimiter=limit=0.98[reaction_audio]`,
     `[source_audio_scaled][reaction_audio]amix=inputs=2:duration=${mixDuration}:dropout_transition=0:normalize=0,alimiter=limit=0.96[audio]`,
   ].join(";");
 
