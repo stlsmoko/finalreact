@@ -26,11 +26,13 @@ export declare const SelfieCutoutView: ComponentType<SelfieCutoutViewProps>;
 export declare function createPersonMask(videoUri: string): Promise<PersonMaskResult>;
 export declare function startRecording(): Promise<CutoutRecordingResult>;
 export declare function stopRecording(): Promise<void>;
+export declare function warmUp(): Promise<void>;
 
 declare const _default: {
   createPersonMask: typeof createPersonMask;
   startRecording: typeof startRecording;
   stopRecording: typeof stopRecording;
+  warmUp: typeof warmUp;
   SelfieCutoutView: typeof SelfieCutoutView;
 };
 

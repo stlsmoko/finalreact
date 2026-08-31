@@ -219,6 +219,11 @@ export default function ReactionRecordScreen() {
 
   useEffect(() => {
     if (Platform.OS === "web") return;
+    SelfieCutoutNative.warmUp?.().catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
     setAudioModeAsync({
       allowsRecording: true,
       interruptionMode: "mixWithOthers",

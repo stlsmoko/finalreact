@@ -62,8 +62,35 @@ class SelfieCutoutModule : Module() {
             }
         }
 
+        AsyncFunction("warmUp") {
+            scope.launch { warmUpModel() }
+        }
+
+        OnCreate {
+            scope.launch { warmUpModel() }
+        }
+
         OnDestroy {
             scope.cancel()
+        }
+    }
+
+    private fun warmUpModel() {
+        val dummy = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
+        val segmenter = Segmentation.getClient(
+            SelfieSegmenterOptions.Builder()
+                .setDetectorMode(SelfieSegmenterOptions.STREAM_MODE)
+                .enableRawSizeMask()
+                .build()
+        )
+        try {
+            Tasks.await(segmenter.process(InputImage.fromBitmap(dummy, 0)), 45, TimeUnit.SECONDS)
+            Log.i(TAG, "Cutout model is warm")
+        } catch (error: Exception) {
+            Log.w(TAG, "Cutout model warmup skipped", error)
+        } finally {
+            dummy.recycle()
+            try { segmenter.close() } catch (_: Exception) {}
         }
     }
 
@@ -103,8 +130,10 @@ class SelfieCutoutModule : Module() {
                 if (frame != null) {
                     val square = PersonCutout.centerCropSquare(frame)
                     if (square !== frame) frame.recycle()
-                    val working = PersonCutout.asSoftwareArgb(square)
-                    if (working !== square) square.recycle()
+                    val scaled = PersonCutout.scaleToMax(square, 320)
+                    if (scaled !== square) square.recycle()
+                    val working = PersonCutout.asSoftwareArgb(scaled)
+                    if (working !== scaled) scaled.recycle()
                     val image = InputImage.fromBitmap(working, 0)
                     val mask = Tasks.await(segmenter.process(image), 8, TimeUnit.SECONDS)
                     val cutout = PersonCutout.applyConfidenceMask(working, mask.buffer, mask.width, mask.height)
@@ -181,8 +210,8 @@ class SelfieCutoutModule : Module() {
 
     companion object {
         private const val TAG = "SelfieCutout"
-        private const val MASK_FPS_SHORT = 12.0
-        private const val MASK_FPS_LONG = 8.0
-        private const val MAX_FRAMES = 360
+        private const val MASK_FPS_SHORT = 6.0
+        private const val MASK_FPS_LONG = 5.0
+        private const val MAX_FRAMES = 180
     }
 }

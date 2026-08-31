@@ -1,8 +1,9 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { router, useFocusEffect } from "expo-router";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { useCallback } from "react";
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useState } from "react";
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import * as FileSystem from "expo-file-system/legacy";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { getCurrentReaction } from "@/lib/reaction-session";
@@ -11,6 +12,7 @@ export default function ReviewScreen() {
   const take = getCurrentReaction();
   const takeUri = take?.uri;
   const safeTakeUri = takeUri ?? "";
+  const [isSaving, setIsSaving] = useState(false);
   const player = useVideoPlayer(takeUri ?? null, (videoPlayer) => {
     videoPlayer.loop = false;
     videoPlayer.muted = false;
@@ -32,18 +34,48 @@ export default function ReviewScreen() {
   }
 
   async function saveTake() {
+    if (isSaving) return;
     if (Platform.OS === "web") {
       Alert.alert("Use a phone to save", "Saving a local camera take requires the native iPhone or Android build.");
       return;
     }
-    const MediaLibrary = await import("expo-media-library");
-    const permission = await MediaLibrary.requestPermissionsAsync(true, ["video"]);
-    if (!permission.granted) {
-      Alert.alert("Permission needed", "Allow photo-library access to save this reaction take.");
+    if (!safeTakeUri) {
+      Alert.alert("Nothing to save", "Record a reaction first, then save it to your gallery.");
       return;
     }
-    await MediaLibrary.saveToLibraryAsync(safeTakeUri);
-    Alert.alert("Saved", "Your reaction-camera take was added to your photo library.");
+    setIsSaving(true);
+    try {
+      const MediaLibrary = await import("expo-media-library");
+      const permission = await MediaLibrary.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Permission needed", "Allow Photos / Gallery access so Reel Reactor can save this video.");
+        return;
+      }
+      let localUri = safeTakeUri;
+      if (localUri.startsWith("/") && !localUri.startsWith("file:")) {
+        localUri = `file://${localUri}`;
+      }
+      const dest = `${FileSystem.cacheDirectory ?? ""}ReelReactor-${Date.now()}.mp4`;
+      try {
+        if (dest.startsWith("file:")) {
+          await FileSystem.copyAsync({ from: localUri, to: dest });
+          localUri = dest;
+        }
+      } catch {
+        // Original cache file is fine if the copy is unnecessary.
+      }
+      if (typeof MediaLibrary.createAssetAsync === "function") {
+        await MediaLibrary.createAssetAsync(localUri);
+      } else {
+        await MediaLibrary.saveToLibraryAsync(localUri);
+      }
+      Alert.alert("Saved", "Your reaction is in Photos / Gallery.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The gallery could not import this video.";
+      Alert.alert("Could not save", message);
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   async function shareTake() {
@@ -86,9 +118,9 @@ export default function ReviewScreen() {
           </View>
         </View>
         <View style={styles.actions}>
-          <Pressable onPress={saveTake} style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryPressed]}>
-            <MaterialIcons name="save-alt" size={22} color="#FFFFFF" />
-            <Text style={styles.primaryLabel}>Save reaction video</Text>
+          <Pressable onPress={saveTake} disabled={isSaving} style={({ pressed }) => [styles.primaryButton, (pressed || isSaving) && styles.primaryPressed]}>
+            {isSaving ? <ActivityIndicator color="#FFFFFF" /> : <MaterialIcons name="save-alt" size={22} color="#FFFFFF" />}
+            <Text style={styles.primaryLabel}>{isSaving ? "Saving…" : "Save reaction video"}</Text>
           </Pressable>
           <Pressable onPress={shareTake} style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryPressed]}>
             <MaterialIcons name="ios-share" size={21} color="#FF8A6B" />

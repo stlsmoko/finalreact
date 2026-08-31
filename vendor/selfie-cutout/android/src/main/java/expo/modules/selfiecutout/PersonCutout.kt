@@ -30,6 +30,15 @@ internal object PersonCutout {
         return source
     }
 
+    fun scaleToMax(source: Bitmap, maxSide: Int): Bitmap {
+        val longest = maxOf(source.width, source.height)
+        if (longest <= maxSide) return source
+        val scale = maxSide.toFloat() / longest.toFloat()
+        val w = (source.width * scale).toInt().coerceAtLeast(1)
+        val h = (source.height * scale).toInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(source, w, h, true)
+    }
+
     fun applyConfidenceMask(frame: Bitmap, buffer: ByteBuffer, maskWidth: Int, maskHeight: Int): Bitmap {
         val width = frame.width.coerceAtLeast(1)
         val height = frame.height.coerceAtLeast(1)

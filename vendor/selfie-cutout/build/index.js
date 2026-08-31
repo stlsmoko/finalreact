@@ -35,17 +35,26 @@ async function stopRecording() {
   return native.stopRecording();
 }
 
+async function warmUp() {
+  if (!native || typeof native.warmUp !== "function") {
+    return;
+  }
+  return native.warmUp();
+}
+
 const SelfieCutoutView = NativeView;
 
 module.exports = {
   createPersonMask,
   startRecording,
   stopRecording,
+  warmUp,
   SelfieCutoutView,
   default: {
     createPersonMask,
     startRecording,
     stopRecording,
+    warmUp,
     SelfieCutoutView,
   },
 };

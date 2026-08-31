@@ -111,7 +111,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         active = this
         bindAttempts = 0
         readyOnce.set(false)
-        mainHandler.postDelayed({ startProvider() }, 80)
+        mainHandler.post { startProvider() }
     }
 
     override fun onDetachedFromWindow() {
@@ -148,7 +148,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         val analysis = ImageAnalysis.Builder()
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-            .setTargetResolution(Size(360, 480))
+            .setTargetResolution(Size(256, 320))
             .build()
             .also { useCase ->
                 useCase.setAnalyzer(analysisExecutor, ::analyzeFrame)
@@ -212,8 +212,15 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
 
         val square = PersonCutout.centerCropSquare(bitmap)
         if (square !== bitmap) bitmap.recycle()
-        val working = PersonCutout.asSoftwareArgb(square)
-        if (working !== square) square.recycle()
+        val scaled = PersonCutout.scaleToMax(square, 320)
+        if (scaled !== square) square.recycle()
+        val working = PersonCutout.asSoftwareArgb(scaled)
+        if (working !== scaled) scaled.recycle()
+        // Show the live camera immediately so Cutout is not a blank wait while ML Kit loads.
+        if (!readyOnce.get()) {
+            val firstLook = working.copy(Bitmap.Config.ARGB_8888, false)
+            if (firstLook != null) showBitmap(firstLook)
+        }
         val image = InputImage.fromBitmap(working, 0)
         val client = segmenter
         if (client == null) {
