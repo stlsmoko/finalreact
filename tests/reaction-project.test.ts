@@ -76,6 +76,21 @@ describe("shared-link intake", () => {
     for (const url of urls) expect(normalizeSharedLink(` ${url} `)).toBe(url);
   });
 
+  it("pulls the first social URL out of messy share-sheet text", () => {
+    expect(
+      normalizeSharedLink("Check this reel https://www.tiktok.com/@creator/video/123?_r=1 and react")
+    ).toBe("https://www.tiktok.com/@creator/video/123?_r=1");
+    expect(
+      normalizeSharedLink('"https://www.instagram.com/reel/AbC123/?igsh=xyz"')
+    ).toBe("https://www.instagram.com/reel/AbC123/?igsh=xyz");
+    expect(
+      normalizeSharedLink("www.facebook.com/share/r/1LyABp9fRZ/")
+    ).toBe("https://www.facebook.com/share/r/1LyABp9fRZ/");
+    expect(
+      normalizeSharedLink("https://vm.tiktok.com/ZMhabcde/")
+    ).toBe("https://vm.tiktok.com/ZMhabcde/");
+  });
+
   it("does not treat non-web content as a shareable social link", () => {
     expect(normalizeSharedLink("reelreactor://shared-link")).toBeNull();
   });

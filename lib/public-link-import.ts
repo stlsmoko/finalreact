@@ -31,10 +31,13 @@ function isPlayableVideoUrl(value: string) {
       host.includes("fbcdn.net") ||
       host.includes("cdninstagram.com") ||
       host.includes("tiktokcdn") ||
+      host.includes("snssdk.com") ||
       host.includes("twimg.com") ||
       host.includes("video.twimg") ||
       host.includes("googlevideo.com") ||
-      path.includes("/video")
+      host.includes("scontent") ||
+      path.includes("/video") ||
+      path.includes("/reel")
     );
   } catch {
     return false;
@@ -48,6 +51,9 @@ function extractDirectVideoUrl(html: string, pageUrl: string) {
     /"browser_native_sd_url"\s*:\s*"([^"]+)"/i,
     /"playable_url"\s*:\s*"([^"]+)"/i,
     /"video_url"\s*:\s*"([^"]+)"/i,
+    /"playAddr"\s*:\s*"([^"]+)"/i,
+    /"downloadAddr"\s*:\s*"([^"]+)"/i,
+    /"video_versions"\s*:\s*\[[^\]]*"url"\s*:\s*"([^"]+)"/i,
     /<meta\s+(?:property|name)=["'](?:og:video|og:video:url|og:video:secure_url|twitter:player:stream)["']\s+content=["']([^"']+)["']/i,
     /<meta\s+content=["']([^"']+)["']\s+(?:property|name)=["'](?:og:video|og:video:url|og:video:secure_url|twitter:player:stream)["']/i,
     /<video[^>]*\ssrc=["']([^"']+)["']/i,
