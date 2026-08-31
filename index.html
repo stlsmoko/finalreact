@@ -902,13 +902,12 @@
       <!-- Ingest Card (Apple Modal Screen) -->
       <div class="ingest-card" id="ingestCard">
         <h2 class="ingest-title">Select Reaction Clip</h2>
-        <p class="ingest-desc">Choose a video from your library, paste a social link, or test with a sample.</p>
+        <p class="ingest-desc">Choose a video from your library or paste a social link.</p>
 
         <!-- Segmented Ingest Picker -->
         <div class="segmented-control" role="tablist">
           <button type="button" class="seg-btn" id="tabUpload" aria-selected="true">Upload</button>
           <button type="button" class="seg-btn" id="tabLink" aria-selected="false">Link</button>
-          <button type="button" class="seg-btn" id="tabSample" aria-selected="false">Demo</button>
         </div>
 
         <div class="ingest-body">
@@ -926,23 +925,11 @@
               <input type="url" class="apple-input" id="linkInput" placeholder="Paste link (TikTok, X, MP4, Drive)…" required />
               <button type="submit" class="btn-input-submit" id="linkSubmitBtn">Import</button>
             </form>
-            <div class="sample-row" style="margin-top: 10px;">
-              <button type="button" class="btn-sample-chip" id="btnLinkSample1" style="font-size: 11px; padding: 6px 12px;">🌸 Sample MP4</button>
-              <button type="button" class="btn-sample-chip" id="btnLinkSample2" style="font-size: 11px; padding: 6px 12px;">🛹 Action Clip</button>
-            </div>
             <p id="linkHelpText" style="font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 10px; text-align: center; line-height: 1.4;">
               Supports Direct MP4, Google Drive, Dropbox, X/Twitter, TikTok, & web video links.
             </p>
           </div>
 
-          <!-- Demo Sample Option -->
-          <div id="panelSample" class="hidden">
-            <div class="sample-row">
-              <button type="button" class="btn-sample-chip" id="btnSample1">🛹 Skate</button>
-              <button type="button" class="btn-sample-chip" id="btnSample2">🎮 Gaming</button>
-              <button type="button" class="btn-sample-chip" id="btnSample3">🌊 Ocean</button>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -1089,12 +1076,11 @@
   var btnPauseReel = $("btnPauseReel"), btnCamToggle = $("btnCamToggle");
   var reviewActions = $("reviewActions"), btnNewTake = $("btnNewTake"), btnExport = $("btnExport");
   var btnChangeClip = $("btnChangeClip"), btnAudioHeader = $("btnAudioHeader"), btnAudioDock = $("btnAudioDock");
-  var tabUpload = $("tabUpload"), tabLink = $("tabLink"), tabSample = $("tabSample");
-  var panelUpload = $("panelUpload"), panelLink = $("panelLink"), panelSample = $("panelSample");
+  var tabUpload = $("tabUpload"), tabLink = $("tabLink");
+  var panelUpload = $("panelUpload"), panelLink = $("panelLink");
   var btnPickFile = $("btnPickFile"), fileInput = $("fileInput");
   var linkForm = $("linkForm"), linkInput = $("linkInput"), linkSubmitBtn = $("linkSubmitBtn");
-  var btnLinkSample1 = $("btnLinkSample1"), btnLinkSample2 = $("btnLinkSample2"), linkHelpText = $("linkHelpText");
-  var btnSample1 = $("btnSample1"), btnSample2 = $("btnSample2"), btnSample3 = $("btnSample3");
+  var linkHelpText = $("linkHelpText");
   var toast = $("toast");
 
   /* Audio Sheet Elements */
@@ -1114,8 +1100,8 @@
   var audioCtx = null, audioDest = null, srcNode = null, micNode = null;
   var srcGainNode = null, micGainNode = null, micPresenceNode = null, micHpFilter = null, masterCompressor = null;
   var micAnalyser = null, micDataArray = null;
-  var reelRawPercent = 50;  // 0 to 100
-  var micRawPercent = 150;  // 0 to 350
+  var reelRawPercent = 8;  // 0 to 100
+  var micRawPercent = 280;  // 0 to 350
   var reelMuted = false, micMuted = false;
   var isAutoDucking = true;
   var duckingFactor = 1.0; // Current ducking factor
@@ -1524,116 +1510,18 @@
   tabUpload.addEventListener("click", function () {
     tabUpload.setAttribute("aria-selected", "true");
     tabLink.setAttribute("aria-selected", "false");
-    tabSample.setAttribute("aria-selected", "false");
     show(panelUpload, true);
     show(panelLink, false);
-    show(panelSample, false);
   });
 
   tabLink.addEventListener("click", function () {
     tabLink.setAttribute("aria-selected", "true");
     tabUpload.setAttribute("aria-selected", "false");
-    tabSample.setAttribute("aria-selected", "false");
     show(panelUpload, false);
     show(panelLink, true);
-    show(panelSample, false);
     linkInput.focus();
   });
 
-  tabSample.addEventListener("click", function () {
-    tabSample.setAttribute("aria-selected", "true");
-    tabUpload.setAttribute("aria-selected", "false");
-    tabLink.setAttribute("aria-selected", "false");
-    show(panelUpload, false);
-    show(panelLink, false);
-    show(panelSample, true);
-  });
-
-  /* ---------- Sample Preset Videos Generation ---------- */
-
-  function loadSyntheticSample(name, colorTheme) {
-    srcReady = false;
-    notify("Loading " + name + "…");
-
-    var sCanvas = document.createElement("canvas");
-    sCanvas.width = 720;
-    sCanvas.height = 1280;
-    var sCtx = sCanvas.getContext("2d");
-    var sStream = sCanvas.captureStream(30);
-
-    // Add synthesized background soundtrack for realistic reaction testing
-    var sAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    var sOsc = sAudioCtx.createOscillator();
-    var sGain = sAudioCtx.createGain();
-    sGain.gain.setValueAtTime(0.12, sAudioCtx.currentTime);
-    sOsc.frequency.setValueAtTime(colorTheme === "skate" ? 220 : colorTheme === "gaming" ? 330 : 180, sAudioCtx.currentTime);
-    sOsc.connect(sGain);
-    var sDest = sAudioCtx.createMediaStreamDestination();
-    sGain.connect(sDest);
-    sOsc.start();
-
-    var combinedTracks = sStream.getVideoTracks().concat(sDest.stream.getAudioTracks());
-    var sRecorder = new MediaRecorder(new MediaStream(combinedTracks), { mimeType: "video/webm" });
-    var sChunks = [];
-    sRecorder.ondataavailable = function (e) { if (e.data.size) sChunks.push(e.data); };
-    sRecorder.onstop = function () {
-      sOsc.stop();
-      var sBlob = new Blob(sChunks, { type: "video/webm" });
-      if (srcVideo.src) URL.revokeObjectURL(srcVideo.src);
-      srcVideo.src = URL.createObjectURL(sBlob);
-      srcVideo.load();
-      stage = "stage";
-      render();
-      if (!camReady) autoEnableCamera();
-    };
-
-    sRecorder.start();
-    var frame = 0;
-    var totalFrames = 150;
-    var sInterval = setInterval(function () {
-      frame++;
-      var grad = sCtx.createLinearGradient(0, 0, 720, 1280);
-      if (colorTheme === "skate") {
-        grad.addColorStop(0, "#FF453A");
-        grad.addColorStop(0.5, "#2C120C");
-        grad.addColorStop(1, "#000000");
-      } else if (colorTheme === "gaming") {
-        grad.addColorStop(0, "#BF5AF2");
-        grad.addColorStop(0.5, "#1C1427");
-        grad.addColorStop(1, "#000000");
-      } else {
-        grad.addColorStop(0, "#0A84FF");
-        grad.addColorStop(0.5, "#0D253F");
-        grad.addColorStop(1, "#000000");
-      }
-      sCtx.fillStyle = grad;
-      sCtx.fillRect(0, 0, 720, 1280);
-
-      sCtx.save();
-      sCtx.fillStyle = "rgba(255, 255, 255, 0.12)";
-      sCtx.beginPath();
-      sCtx.arc(360 + Math.sin(frame * 0.08) * 150, 640 + Math.cos(frame * 0.08) * 180, 110 + Math.sin(frame * 0.1) * 30, 0, Math.PI * 2);
-      sCtx.fill();
-      sCtx.restore();
-
-      sCtx.fillStyle = "#FFFFFF";
-      sCtx.font = "bold 44px -apple-system, BlinkMacSystemFont, sans-serif";
-      sCtx.textAlign = "center";
-      sCtx.fillText(name, 360, 590);
-      sCtx.font = "600 22px monospace";
-      sCtx.fillStyle = "rgba(255, 255, 255, 0.75)";
-      sCtx.fillText("DEMO REEL · 00:" + (frame < 30 ? "01" : frame < 60 ? "02" : frame < 90 ? "03" : frame < 120 ? "04" : "05"), 360, 640);
-
-      if (frame >= totalFrames) {
-        clearInterval(sInterval);
-        sRecorder.stop();
-      }
-    }, 33);
-  }
-
-  btnSample1.addEventListener("click", function () { loadSyntheticSample("🛹 Skate Clip", "skate"); });
-  btnSample2.addEventListener("click", function () { loadSyntheticSample("🎮 Gaming Play", "gaming"); });
-  btnSample3.addEventListener("click", function () { loadSyntheticSample("🌊 Ocean Vista", "ocean"); });
 
   /* ---------- Video Source Loading ---------- */
 
@@ -1972,6 +1860,9 @@
 
   function stopRecording() {
     if (!recorder || recorder.state === "inactive") return;
+    clearInterval(timerId);
+    timerId = 0;
+    if (recordPill) recordPill.classList.add("hidden");
     recorder.stop();
   }
 

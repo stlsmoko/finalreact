@@ -136,8 +136,8 @@ export default function ReactionRecordScreen() {
   const [isCutoutReady, setIsCutoutReady] = useState(false);
 
   const [isAudioSheetOpen, setIsAudioSheetOpen] = useState(false);
-  const [reelVolume, setReelVolume] = useState(18);
-  const [micVolume, setMicVolume] = useState(220);
+  const [reelVolume, setReelVolume] = useState(8);
+  const [micVolume, setMicVolume] = useState(280);
   const [isReelMuted, setIsReelMuted] = useState(false);
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [isAutoDucking, setIsAutoDucking] = useState(true);
@@ -183,12 +183,12 @@ export default function ReactionRecordScreen() {
   }, [observedSourceTime]);
 
   const effectiveReelGain = isReelMuted ? 0 : reelVolume / 100;
-  const effectiveMicGain = isMicMuted ? 0 : Math.max(0, Math.min(9, (micVolume / 100) * 3));
+  const effectiveMicGain = isMicMuted ? 0 : Math.max(0, Math.min(12, (micVolume / 100) * 4));
   const sourceAudioGainRef = useRef(effectiveReelGain);
   const reactionAudioGainRef = useRef(effectiveMicGain);
 
   useEffect(() => {
-    sourceAudioGainRef.current = isAutoDucking ? effectiveReelGain * 0.7 : effectiveReelGain;
+    sourceAudioGainRef.current = isAutoDucking ? effectiveReelGain * 0.35 : effectiveReelGain;
     reactionAudioGainRef.current = effectiveMicGain;
     if (!isSourcePaused && !isCompositing) {
       playerRef.current.volume = sourceAudioGainRef.current;
@@ -375,6 +375,7 @@ export default function ReactionRecordScreen() {
       : null;
     setRecordingStatus(reason);
     setIsRecording(false);
+    setIsCompositing(true);
     try {
       playerRef.current.volume = 0;
       player.pause();
@@ -389,6 +390,7 @@ export default function ReactionRecordScreen() {
         `Could not stop recording: ${error instanceof Error ? error.message : "unknown camera error"}`
       );
       setIsRecording(false);
+      setIsCompositing(false);
     }
   }
 

@@ -57,8 +57,8 @@ try {
   run("ffmpeg", ["-hide_banner", "-loglevel", "error", ...command.args]);
 
   const duration = Number(run("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=nk=1:nw=1", outputPath], true).trim());
-  const sourceDb = measureProcessedMean(sourcePath, "volume=0.12");
-  const reactionDb = measureProcessedMean(reactionPath, "volume=6.5,alimiter=limit=0.98");
+  const sourceDb = measureProcessedMean(sourcePath, "volume=0.08");
+  const reactionDb = measureProcessedMean(reactionPath, "volume=8.5,alimiter=limit=0.98");
 
   if (!Number.isFinite(duration) || duration < 1.8 || duration > 2.4) {
     throw new Error(`Composite did not stop with the two-second reaction recording: ${duration}`);
