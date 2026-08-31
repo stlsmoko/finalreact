@@ -47,11 +47,12 @@ jobs:
       - name: Restore missing build files
         run: |
           git clone --depth=1 https://github.com/stlsmoko/1reel.git /tmp/donor || true
-          mkdir -p node_modules/ffmpeg-expo/plugin/build node_modules/reel-importer/build assets/images
+          mkdir -p node_modules/ffmpeg-expo/plugin/build node_modules/reel-importer/build node_modules/selfie-cutout/build assets/images
           if [ -d /tmp/donor/vendor/ffmpeg-expo/plugin ]; then cp -a /tmp/donor/vendor/ffmpeg-expo/plugin node_modules/ffmpeg-expo/; fi
           if [ -d /tmp/donor/vendor/ffmpeg-expo/build ]; then cp -a /tmp/donor/vendor/ffmpeg-expo/build node_modules/ffmpeg-expo/; fi
           if [ -d /tmp/donor/vendor/reel-importer/build ]; then cp -a /tmp/donor/vendor/reel-importer/build node_modules/reel-importer/; fi
           if [ -d vendor/reel-importer/build ]; then cp -a vendor/reel-importer/build node_modules/reel-importer/; fi
+          if [ -d vendor/selfie-cutout ]; then cp -a vendor/selfie-cutout/. node_modules/selfie-cutout/; fi
           if [ ! -f assets/images/icon.png ] && [ -f assets/images/android-icon-foreground.png ]; then cp assets/images/android-icon-foreground.png assets/images/icon.png; fi
           if [ ! -f assets/images/splash-icon.png ] && [ -f assets/images/android-icon-foreground.png ]; then cp assets/images/android-icon-foreground.png assets/images/splash-icon.png; fi
           if [ ! -f assets/images/favicon.png ] && [ -f assets/images/android-icon-foreground.png ]; then cp assets/images/android-icon-foreground.png assets/images/favicon.png; fi
@@ -61,10 +62,15 @@ jobs:
           fi
           if [ ! -f node_modules/reel-importer/build/index.js ]; then
             mkdir -p node_modules/reel-importer/build
-            printf '%s\n' 'module.exports = {};' > node_modules/reel-importer/build/index.js
+            printf '%s\n' 'const { requireNativeModule } = require("expo-modules-core"); module.exports = requireNativeModule("ReelImporter");' > node_modules/reel-importer/build/index.js
+          fi
+          if [ ! -f node_modules/selfie-cutout/build/index.js ]; then
+            mkdir -p node_modules/selfie-cutout/build
+            printf '%s\n' 'const { requireNativeModule } = require("expo-modules-core"); const native = requireNativeModule("SelfieCutout"); module.exports = { createPersonMask: (uri) => native.createPersonMask(uri), default: { createPersonMask: (uri) => native.createPersonMask(uri) } };' > node_modules/selfie-cutout/build/index.js
           fi
           test -f node_modules/ffmpeg-expo/plugin/build/index.js
           test -f node_modules/reel-importer/build/index.js
+          test -f node_modules/selfie-cutout/build/index.js
 
       - name: Point Android bundle at Expo app
         run: |

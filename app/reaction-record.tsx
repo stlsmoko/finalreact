@@ -471,7 +471,11 @@ export default function ReactionRecordScreen() {
         const completedSourcePauses = closeOpenSourcePause();
         setIsCompositing(true);
         const styleLabel = overlayStyle === "circle" ? "Circle" : overlayStyle === "square" ? "Square" : "Cutout";
-        setRecordingStatus(`Rendering ${styleLabel} style: source clip + camera + audio…`);
+        setRecordingStatus(
+          overlayStyle === "cutout"
+            ? "Cutout: isolating you from the background…"
+            : `Rendering ${styleLabel} style: source clip + camera + audio…`,
+        );
 
         const finalDurationSec =
           recordingStopDurationSecRef.current ??
@@ -485,7 +489,7 @@ export default function ReactionRecordScreen() {
           overlay: { ...overlayPosition, size: overlaySize },
           studioSize,
           sourceSize: { width: source?.width, height: source?.height },
-          overlayStyle: overlayStyle === "cutout" ? "green-screen" : overlayStyle,
+          overlayStyle,
           sourcePauses: completedSourcePauses,
           stopDurationSec: finalDurationSec,
           sourceAudioGain: sourceAudioGainRef.current,
@@ -622,7 +626,13 @@ export default function ReactionRecordScreen() {
                   left: overlayPosition.x,
                   top: overlayPosition.y,
                   width: overlaySize,
-                  borderColor: isRecording ? "rgba(255, 255, 255, 0.2)" : "rgba(255, 255, 255, 0.6)",
+                  borderWidth: overlayStyle === "cutout" ? 0 : 1.5,
+                  borderColor:
+                    overlayStyle === "cutout"
+                      ? "transparent"
+                      : isRecording
+                        ? "rgba(255, 255, 255, 0.2)"
+                        : "rgba(255, 255, 255, 0.6)",
                 },
               ]}
             >

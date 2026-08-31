@@ -100,6 +100,37 @@ describe("composite command", () => {
     expect(buildCompositeCommand({ ...baseRequest, overlayStyle: "green-screen" }).filter).toContain("chromakey=0x00FF00:0.32:0.12[reaction]");
   });
 
+  it("uses a person mask input for cutout instead of green-screen chromakey", () => {
+    const baseRequest = {
+      sourcePath: "file:///cache/source.mp4",
+      reactionPath: "file:///cache/reaction.mp4",
+      outputPath: "file:///cache/output.mp4",
+      overlay: { x: 20, y: 80, size: 132 },
+      studioSize: { width: 390, height: 844 },
+    };
+
+    const masked = buildCompositeCommand({
+      ...baseRequest,
+      overlayStyle: "cutout",
+      maskPattern: "file:///cache/masks/mask_%05d.png",
+      maskFps: 8,
+    });
+    expect(masked.filter).toContain("[2:v]scale=244:244:force_original_aspect_ratio=increase,crop=244:244,setsar=1,format=gray[reaction_alpha]");
+    expect(masked.filter).toContain("[reaction_rgba][reaction_alpha]alphamerge[reaction]");
+    expect(masked.filter).not.toContain("chromakey=0x00FF00");
+    expect(masked.args).toEqual(expect.arrayContaining([
+      "-f", "image2",
+      "-framerate", "8",
+      "-start_number", "1",
+      "-i", "/cache/masks/mask_%05d.png",
+    ]));
+
+    const fallback = buildCompositeCommand({ ...baseRequest, overlayStyle: "cutout" });
+    expect(fallback.filter).toContain("alphamerge[reaction]");
+    expect(fallback.filter).not.toContain("chromakey=0x00FF00");
+    expect(fallback.args).not.toContain("-f");
+  });
+
   it("freezes the background and inserts silent source audio when the creator pauses the reel to talk", () => {
     const command = buildCompositeCommand({
       sourcePath: "file:///cache/source.mp4",

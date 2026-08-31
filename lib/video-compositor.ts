@@ -8,7 +8,7 @@ export type CompositeRequest = {
   overlay: { x: number; y: number; size: number };
   studioSize: { width: number; height: number };
   sourceSize?: { width?: number; height?: number };
-  overlayStyle?: "circle" | "square" | "green-screen";
+  overlayStyle?: "circle" | "square" | "green-screen" | "cutout";
   sourcePauses?: { sourceTimeSec: number; durationSec: number }[];
   stopDurationSec?: number;
   sourceAudioGain?: number;
@@ -60,11 +60,39 @@ async function ensureReadableMedia(label: string, uri: string) {
   return localUri;
 }
 
+async function createCutoutMask(reactionPath: string) {
+  try {
+    const selfieCutout = await import("selfie-cutout");
+    const createPersonMask = selfieCutout.createPersonMask ?? selfieCutout.default?.createPersonMask;
+    if (typeof createPersonMask !== "function") {
+      return null;
+    }
+    const mask = await createPersonMask(reactionPath);
+    if (!mask?.pattern || !mask.frameCount) {
+      return null;
+    }
+    return {
+      pattern: mask.pattern,
+      fps: Number.isFinite(mask.fps) ? Number(mask.fps) : 8,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function composeReactionVideo(request: CompositeRequest) {
   const sourcePath = await ensureReadableMedia("Source", request.sourceUri);
   const reactionPath = await ensureReadableMedia("Reaction", request.reactionUri);
   const outputPath = `${getCacheDirectory()}reel-reactor-composite-${Date.now()}.mp4`;
-  const command = buildCompositeCommand({ ...request, sourcePath, reactionPath, outputPath });
+  const personMask = request.overlayStyle === "cutout" ? await createCutoutMask(reactionPath) : null;
+  const command = buildCompositeCommand({
+    ...request,
+    sourcePath,
+    reactionPath,
+    outputPath,
+    maskPattern: personMask?.pattern,
+    maskFps: personMask?.fps,
+  });
   const logLines: string[] = [];
   let ffmpeg: typeof import("ffmpeg-expo");
 

@@ -53,10 +53,24 @@ export default function SharedLinkScreen() {
           importedName = data.title || `${sourceName} Clip`;
         }
       } catch {
-        // Fall back to native downloader on device
+        // Fall back to on-device extractors.
       }
 
-      // 2. If web/proxy didn't resolve or on native, try native ReelImporter module if available
+      // 2. Public Facebook / social pages often expose a direct mp4. Scrape and download it on-device.
+      if (!importedUri && Platform.OS !== "web") {
+        try {
+          const { importPublicVideoFromPage } = await import("@/lib/public-link-import");
+          const scraped = await importPublicVideoFromPage(sharedUrl);
+          if (scraped?.uri) {
+            importedUri = scraped.uri;
+            importedName = scraped.fileName || importedName;
+          }
+        } catch (scrapeErr) {
+          console.warn("Page scrape importer error:", scrapeErr);
+        }
+      }
+
+      // 3. Native yt-dlp extractor (ReelImporter)
       if (!importedUri && Platform.OS !== "web") {
         try {
           const ReelImporter = (await import("reel-importer")).default;

@@ -2,11 +2,17 @@ export type CompositeGeometry = {
   overlay: { x: number; y: number; size: number };
   studioSize: { width: number; height: number };
   sourceSize?: { width?: number; height?: number };
-  overlayStyle?: "circle" | "square" | "green-screen";
+  overlayStyle?: "circle" | "square" | "green-screen" | "cutout";
+  maskPattern?: string;
+  maskFps?: number;
   sourcePauses?: { sourceTimeSec: number; durationSec: number }[];
   stopDurationSec?: number;
   sourceAudioGain?: number;
 };
+
+function toFfmpegPath(uri: string) {
+  return uri.replace(/^file:\/\//, "");
+}
 
 const OUTPUT_WIDTH = 720;
 const OUTPUT_HEIGHT = 1280;
@@ -108,27 +114,61 @@ export function getOutputOverlay({ overlay, studioSize, sourceSize }: CompositeG
   };
 }
 
+function buildReactionFilters(
+  overlayStyle: NonNullable<CompositeGeometry["overlayStyle"]>,
+  overlaySize: number,
+  hasPersonMask: boolean,
+) {
+  const reactionBase = `[1:v]scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=increase,crop=${overlaySize}:${overlaySize},setsar=1`;
+
+  if (overlayStyle === "circle") {
+    return [
+      `${reactionBase},format=rgba[reaction_rgba]`,
+      `color=c=black:s=${overlaySize}x${overlaySize},format=gray,geq=lum='if(lte(hypot(X-W/2\\,Y-H/2)\\,W/2-3)\\,255\\,0)'[reaction_alpha]`,
+      "[reaction_rgba][reaction_alpha]alphamerge[reaction]",
+    ];
+  }
+
+  if (overlayStyle === "green-screen") {
+    return [`${reactionBase},format=rgba,chromakey=0x00FF00:0.32:0.12[reaction]`];
+  }
+
+  if (overlayStyle === "cutout" && hasPersonMask) {
+    return [
+      `${reactionBase},format=rgba[reaction_rgba]`,
+      `[2:v]scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=increase,crop=${overlaySize}:${overlaySize},setsar=1,format=gray[reaction_alpha]`,
+      "[reaction_rgba][reaction_alpha]alphamerge[reaction]",
+    ];
+  }
+
+  if (overlayStyle === "cutout") {
+    return [
+      `${reactionBase},format=rgba[reaction_rgba]`,
+      `color=c=black:s=${overlaySize}x${overlaySize},format=gray,geq=lum='if(lte(hypot((X-W/2)/(W/2-2)\\,(Y-H*0.46)/(H*0.46-2))\\,1)\\,255\\,0)'[reaction_alpha]`,
+      "[reaction_rgba][reaction_alpha]alphamerge[reaction]",
+    ];
+  }
+
+  return [`${reactionBase}[reaction]`];
+}
+
 export function buildCompositeCommand(
   request: CompositeGeometry & { sourcePath: string; reactionPath: string; outputPath: string },
 ) {
   const overlay = getOutputOverlay(request);
   const overlayStyle = request.overlayStyle ?? "circle";
+  const maskPattern = request.maskPattern?.trim();
+  const hasPersonMask = overlayStyle === "cutout" && Boolean(maskPattern);
+  const maskFps = Number.isFinite(request.maskFps) && (request.maskFps as number) > 0
+    ? seconds(request.maskFps as number)
+    : "8";
   const stopDurationSec = Number.isFinite(request.stopDurationSec) && (request.stopDurationSec ?? 0) > 0.05
     ? seconds(request.stopDurationSec as number)
     : null;
   const sourceAudioGain = Number.isFinite(request.sourceAudioGain)
     ? seconds(Math.max(0, Math.min(1, request.sourceAudioGain as number)))
     : "0.12";
-  const reactionBase = `[1:v]scale=${overlay.size}:${overlay.size}:force_original_aspect_ratio=increase,crop=${overlay.size}:${overlay.size},setsar=1`;
-  const reactionFilters = overlayStyle === "circle"
-    ? [
-        `${reactionBase},format=rgba[reaction_rgba]`,
-        `color=c=black:s=${overlay.size}x${overlay.size},format=gray,geq=lum='if(lte(hypot(X-W/2\\,Y-H/2)\\,W/2-3)\\,255\\,0)'[reaction_alpha]`,
-        "[reaction_rgba][reaction_alpha]alphamerge[reaction]",
-      ]
-    : overlayStyle === "green-screen"
-      ? [`${reactionBase},format=rgba,chromakey=0x00FF00:0.32:0.12[reaction]`]
-      : [`${reactionBase}[reaction]`];
+  const reactionFilters = buildReactionFilters(overlayStyle, overlay.size, hasPersonMask);
   const timelineFilters = stopDurationSec
     ? [
         `[background]trim=duration=${stopDurationSec},setpts=PTS-STARTPTS[background_trimmed]`,
@@ -152,21 +192,23 @@ export function buildCompositeCommand(
     `[source_audio_scaled][reaction_audio]amix=inputs=2:duration=${mixDuration}:dropout_transition=0:normalize=0,alimiter=limit=0.96[audio]`,
   ].join(";");
 
-  return {
-    filter,
-    args: [
-      "-y",
-      "-i", request.sourcePath,
-      "-i", request.reactionPath,
-      "-filter_complex", filter,
-      "-map", "[video]",
-      "-map", "[audio]",
-      "-c:v", "mpeg4",
-      "-q:v", "4",
-      "-pix_fmt", "yuv420p",
-      "-c:a", "aac",
-      ...(stopDurationSec ? ["-t", stopDurationSec] : ["-shortest"]),
-      request.outputPath,
-    ],
-  };
+  const args = [
+    "-y",
+    "-i", request.sourcePath,
+    "-i", request.reactionPath,
+    ...(hasPersonMask && maskPattern
+      ? ["-f", "image2", "-framerate", maskFps, "-start_number", "1", "-i", toFfmpegPath(maskPattern)]
+      : []),
+    "-filter_complex", filter,
+    "-map", "[video]",
+    "-map", "[audio]",
+    "-c:v", "mpeg4",
+    "-q:v", "4",
+    "-pix_fmt", "yuv420p",
+    "-c:a", "aac",
+    ...(stopDurationSec ? ["-t", stopDurationSec] : ["-shortest"]),
+    request.outputPath,
+  ];
+
+  return { filter, args };
 }
