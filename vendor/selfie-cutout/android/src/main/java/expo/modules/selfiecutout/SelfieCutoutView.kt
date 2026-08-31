@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.util.Size
+import android.view.View
 import android.widget.ImageView
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -47,15 +48,17 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     private val readyOnce = AtomicBoolean(false)
 
     private val previewView = PreviewView(context).apply {
-        layoutParams = LayoutParams(1, 1)
+        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+        implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        scaleType = PreviewView.ScaleType.FILL_CENTER
+        visibility = View.INVISIBLE
         alpha = 0f
-        scaleX = 0.01f
-        scaleY = 0.01f
     }
     private val outputView = ImageView(context).apply {
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         scaleType = ImageView.ScaleType.CENTER_CROP
         setBackgroundColor(Color.TRANSPARENT)
+        setLayerType(LAYER_TYPE_HARDWARE, null)
         adjustViewBounds = false
     }
 
@@ -71,6 +74,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
 
     init {
         setBackgroundColor(Color.TRANSPARENT)
+        setLayerType(LAYER_TYPE_HARDWARE, null)
         clipToOutline = false
         clipChildren = false
         addView(previewView)
@@ -136,7 +140,8 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         }
         val analysis = ImageAnalysis.Builder()
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            .setTargetResolution(Size(320, 320))
+            .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
+            .setTargetResolution(Size(480, 640))
             .build()
             .also { useCase ->
                 useCase.setAnalyzer(analysisExecutor, ::analyzeFrame)
@@ -188,6 +193,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         val square = PersonCutout.centerCropSquare(bitmap)
         if (square !== bitmap) bitmap.recycle()
         val working = PersonCutout.asSoftwareArgb(square)
+        if (working !== square) square.recycle()
         val image = InputImage.fromBitmap(working, 0)
         val client = segmenter
         if (client == null) {
@@ -198,12 +204,18 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         client.process(image)
             .addOnSuccessListener { mask ->
                 val cutout = PersonCutout.applyConfidenceMask(working, mask.buffer, mask.width, mask.height)
+                val display = if (cutout === working) {
+                    cutout.copy(Bitmap.Config.ARGB_8888, false) ?: cutout
+                } else {
+                    cutout
+                }
                 if (cutout !== working) working.recycle()
+                else if (display !== cutout) working.recycle()
                 mainHandler.post {
                     val previous = displayedBitmap
-                    displayedBitmap = cutout
-                    outputView.setImageBitmap(cutout)
-                    previous?.recycle()
+                    displayedBitmap = display
+                    outputView.setImageBitmap(display)
+                    if (previous != null && previous !== display) previous.recycle()
                     if (readyOnce.compareAndSet(false, true)) {
                         onReady(mapOf("ready" to true))
                     }
