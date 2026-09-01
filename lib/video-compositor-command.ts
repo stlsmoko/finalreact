@@ -23,16 +23,18 @@ function seconds(value: number) {
 }
 
 function backgroundChain(input: string, output: string) {
-  return `${input}scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1${output}`;
+  // Studio VideoView uses contentFit="cover". Export must crop-fill the same way
+  // or the finished reel letterboxes and the floating head sits on a different frame.
+  return `${input}scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1${output}`;
 }
 
-function getContainedRect(
+function getCoveredRect(
   container: { width: number; height: number },
   sourceSize: { width?: number; height?: number } = {},
 ) {
   const sourceWidth = sourceSize.width && sourceSize.width > 0 ? sourceSize.width : OUTPUT_WIDTH;
   const sourceHeight = sourceSize.height && sourceSize.height > 0 ? sourceSize.height : OUTPUT_HEIGHT;
-  const scale = Math.min(container.width / sourceWidth, container.height / sourceHeight);
+  const scale = Math.max(container.width / sourceWidth, container.height / sourceHeight);
   const width = sourceWidth * scale;
   const height = sourceHeight * scale;
   return { x: (container.width - width) / 2, y: (container.height - height) / 2, width, height };
@@ -104,8 +106,8 @@ function buildSourceTimelineFilters(pauses: CompositeGeometry["sourcePauses"] = 
 }
 
 export function getOutputOverlay({ overlay, studioSize, sourceSize }: CompositeGeometry) {
-  const studioVideo = getContainedRect(studioSize, sourceSize);
-  const outputVideo = getContainedRect({ width: OUTPUT_WIDTH, height: OUTPUT_HEIGHT }, sourceSize);
+  const studioVideo = getCoveredRect(studioSize, sourceSize);
+  const outputVideo = getCoveredRect({ width: OUTPUT_WIDTH, height: OUTPUT_HEIGHT }, sourceSize);
   const scale = outputVideo.width / studioVideo.width;
 
   return {
@@ -135,8 +137,10 @@ function buildReactionFilters(
   }
 
   if (overlayStyle === "cutout" && hasPersonMask) {
+    // Live preview is a tighter square from ImageAnalysis. Recorded camera frames are wider,
+    // so zoom the mask slightly before cover-cropping to keep the same head framing.
     return [
-      `[2:v]fps=30,setpts=PTS-STARTPTS,scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=increase,crop=${overlaySize}:${overlaySize},setsar=1,format=rgba[reaction]`,
+      `[2:v]fps=30,setpts=PTS-STARTPTS,scale=${Math.round(overlaySize * 1.22)}:${Math.round(overlaySize * 1.22)}:force_original_aspect_ratio=increase,crop=${overlaySize}:${overlaySize},setsar=1,format=rgba[reaction]`,
     ];
   }
 
