@@ -10,37 +10,59 @@ jobs:
   restore:
     runs-on: ubuntu-22.04
     steps:
-      - name: Check out full history
+      - name: Check out source
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Restore and patch reaction-record.tsx
+      - name: Patch native Cutout view and recorder
         run: |
-          git checkout 7e0eb027321eeeb918ff4b8e6be6ab4398ac1619 -- app/reaction-record.tsx
-          python3 - << 'PY'
+          python3 << 'PY'
           from pathlib import Path
-          path = Path("app/reaction-record.tsx")
-          text = path.read_text()
-          if len(text) < 20000:
-              raise SystemExit(f"restored file too small: {len(text)}")
+          kt = Path("vendor/selfie-cutout/android/src/main/java/expo/modules/selfiecutout/SelfieCutoutView.kt")
+          text = kt.read_text()
+          text = text.replace("previewView.visibility = View.GONE", "previewView.visibility = View.INVISIBLE")
+          old = """        val hasFrame = displayedBitmap != null && displayedBitmap?.isRecycled == false\n        previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)\n        previewView.translationX = 0f\n        previewView.translationY = 0f\n        if (cutout && hasFrame) {"""
+          new = """        previewView.translationX = 0f\n        previewView.translationY = 0f\n        if (cutout) {
+            previewView.layoutParams = LayoutParams(1, 1)
+            previewView.alpha = 0f
+            previewView.visibility = View.VISIBLE
+            outputView.visibility = View.VISIBLE
+            outputView.bringToFront()
+            setLayerType(LAYER_TYPE_SOFTWARE, null)
+            previewView.requestLayout()
+            outputView.requestLayout()
+            return
+        }
+        if (false) {"""
+          if old not in text:
+              raise SystemExit("applyPreviewMode start not found")
+          text = text.replace(old, new, 1)
           text = text.replace(
-              '                      needsOffscreenAlphaCompositing={overlayStyle === "cutout"}\n',
-              "",
+              """            if (!cutout) {\n                outputView.setImageBitmap(null)\n            }""",
+              """            outputView.setImageBitmap(null)\n            displayedBitmap = null\n            setLayerType(LAYER_TYPE_NONE, null)""",
+              1,
           )
-          text = text.replace(
-              '  cameraView: { flex: 1, overflow: "hidden" },\n  cutoutCamera: { backgroundColor: "transparent", overflow: "visible" },',
-              '  cameraView: { backgroundColor: "transparent", flex: 1, overflow: "hidden" },\n  cutoutCamera: { backgroundColor: "transparent", overflow: "hidden" },',
-          )
-          path.write_text(text)
-          print("restored bytes", path.stat().st_size)
+          kt.write_text(text)
+          rec_path = Path("app/reaction-record.tsx")
+          rec = rec_path.read_text()
+          if len(rec) < 20000:
+              raise SystemExit("recorder too small")
+          if "needsOffscreenAlphaCompositing" not in rec:
+              rec = rec.replace(
+                  "                      collapsable={false}\n                      style={[styles.cameraView, overlayStyle === \"cutout\" ? styles.cutoutCamera : bubbleCustomRadiusStyle]}",
+                  "                      collapsable={false}\n                      needsOffscreenAlphaCompositing={overlayStyle === \"cutout\"}\n                      style={[styles.cameraView, overlayStyle === \"cutout\" ? styles.cutoutCamera : bubbleCustomRadiusStyle]}",
+                  1,
+              )
+          rec_path.write_text(rec)
+          cfg = Path("app.config.ts")
+          cfg.write_text(cfg.read_text().replace("version: \"1.0.43\"", "version: \"1.0.44\"").replace("versionCode: 44", "versionCode: 45"))
+          print("bytes", kt.stat().st_size, rec_path.stat().st_size)
           PY
 
       - name: Commit and push
         run: |
           git config user.name "stlsmoko"
           git config user.email "stlsmoko@users.noreply.github.com"
-          git add app/reaction-record.tsx
+          git add vendor/selfie-cutout/android/src/main/java/expo/modules/selfiecutout/SelfieCutoutView.kt app/reaction-record.tsx app.config.ts
           git diff --cached --stat
-          git commit -m "Restore full reaction recorder and keep Cutout camera visible"
+          git commit -m "Stop Cutout TextureView from covering the reel with a black square" || echo "no changes"
           git push origin HEAD:main
