@@ -2,7 +2,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Platform,
@@ -16,7 +16,7 @@ import {
 
 import { ScreenContainer } from "@/components/screen-container";
 import { normalizeSharedLink, validateSourceVideo } from "@/lib/reaction-project";
-import { setCurrentSharedLink, setCurrentSource } from "@/lib/reaction-session";
+import { getCurrentSource, setCurrentSharedLink, setCurrentSource, setCurrentRoute } from "@/lib/reaction-session";
 
 type IngestTab = "upload" | "link";
 
@@ -26,6 +26,11 @@ export default function HomeScreen() {
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [linkDraft, setLinkDraft] = useState("");
   const [linkError, setLinkError] = useState<string | null>(null);
+  const existingSource = getCurrentSource();
+
+  useEffect(() => {
+    setCurrentRoute("/");
+  }, []);
 
   async function handleSelectAsset(asset: ImagePicker.ImagePickerAsset) {
     const message = validateSourceVideo(asset);
@@ -160,6 +165,17 @@ export default function HomeScreen() {
               <Text style={styles.ingestDesc}>
                 Choose a video from your library or paste a social link.
               </Text>
+              {existingSource ? (
+                <Pressable
+                  onPress={() => router.push("/reaction-record" as never)}
+                  style={({ pressed }) => [styles.btnApplePrimary, pressed && styles.btnPressed, { marginBottom: 14 }]}
+                >
+                  <MaterialIcons name="play-circle-outline" size={20} color="#000000" />
+                  <Text style={styles.btnApplePrimaryText} numberOfLines={1}>
+                    Continue {existingSource.name}
+                  </Text>
+                </Pressable>
+              ) : null}
 
               {/* Segmented Ingest Picker */}
               <View style={styles.segmentedControl}>

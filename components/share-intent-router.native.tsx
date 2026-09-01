@@ -25,7 +25,7 @@ export function ShareIntentRouter() {
         height: video.height ?? undefined,
       });
       resetShareIntent();
-      router.replace("/source-setup" as never);
+      router.replace("/reaction-record" as never);
       return;
     }
 

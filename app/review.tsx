@@ -1,12 +1,12 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { router, useFocusEffect } from "expo-router";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { getCurrentReaction } from "@/lib/reaction-session";
+import { getCurrentReaction, setCurrentRoute } from "@/lib/reaction-session";
 
 export default function ReviewScreen() {
   const take = getCurrentReaction();
@@ -27,6 +27,10 @@ export default function ReviewScreen() {
       }
     };
   }, [player]));
+
+  useEffect(() => {
+    if (take?.isComposite) setCurrentRoute("/review");
+  }, [take?.isComposite]);
 
   if (!takeUri || !take?.isComposite) {
     router.replace("/");

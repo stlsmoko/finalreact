@@ -6,7 +6,7 @@ import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "
 import { ScreenContainer } from "@/components/screen-container";
 import { normalizeSharedLink } from "@/lib/reaction-project";
 import { pruneReactionCache } from "@/lib/reaction-cache";
-import { getCurrentSharedLink, setCurrentSharedLink, setCurrentSource } from "@/lib/reaction-session";
+import { getCurrentSharedLink, setCurrentSharedLink, setCurrentSource, setCurrentRoute, clearSession } from "@/lib/reaction-session";
 
 export default function SharedLinkScreen() {
   const params = useLocalSearchParams<{ url?: string | string[] }>();
@@ -22,6 +22,7 @@ export default function SharedLinkScreen() {
     if (normalizedIncoming) {
       setCurrentSharedLink({ url: normalizedIncoming, capturedAt: Date.now() });
     }
+    setCurrentRoute("/shared-link");
   }, [normalizedIncoming]);
 
   useEffect(() => {
@@ -125,7 +126,7 @@ export default function SharedLinkScreen() {
   return (
     <ScreenContainer edges={["top", "bottom", "left", "right"]} className="px-5" containerClassName="bg-[#080B11]">
       <View style={styles.header}>
-        <Pressable onPress={() => router.replace("/")} hitSlop={12} style={styles.iconButton}>
+        <Pressable onPress={() => { clearSession(); router.replace("/"); }} hitSlop={12} style={styles.iconButton}>
           <MaterialIcons name="close" size={22} color="#F7F8FA" />
         </Pressable>
         <Text style={styles.headerTitle}>Shared post</Text>

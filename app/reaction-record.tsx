@@ -30,7 +30,7 @@ import {
   type OverlayPosition,
 } from "@/lib/reaction-project";
 import { pruneReactionCache } from "@/lib/reaction-cache";
-import { getCurrentSource, setCurrentReaction, setCurrentSource } from "@/lib/reaction-session";
+import { getCurrentSource, setCurrentReaction, setCurrentRoute, clearSession } from "@/lib/reaction-session";
 import { composeReactionVideo } from "@/lib/video-compositor";
 import SelfieCutoutNative from "selfie-cutout";
 
@@ -230,7 +230,11 @@ export default function ReactionRecordScreen() {
   }, [isCompositing, isRecording]);
 
   useEffect(() => {
-    if (!source) router.replace("/");
+    if (!source) {
+      router.replace("/");
+      return;
+    }
+    setCurrentRoute("/reaction-record");
   }, [source]);
 
   useEffect(() => {
@@ -551,7 +555,7 @@ export default function ReactionRecordScreen() {
 
   function handleChangeClip() {
     player.pause();
-    setCurrentSource(null as never);
+    clearSession();
     router.replace("/");
   }
 
