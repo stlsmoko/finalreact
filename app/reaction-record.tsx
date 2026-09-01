@@ -1,1 +1,1 @@
-RESTORED_FROM_LOCAL_FILE
+export { default } from "./reaction-record-impl";
