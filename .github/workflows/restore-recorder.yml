@@ -1,0 +1,46 @@
+name: Restore recorder
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore and patch reaction-record.tsx
+        run: |
+          git checkout 7e0eb027321eeeb918ff4b8e6be6ab4398ac1619 -- app/reaction-record.tsx
+          python3 - << 'PY'
+          from pathlib import Path
+          path = Path("app/reaction-record.tsx")
+          text = path.read_text()
+          if len(text) < 20000:
+              raise SystemExit(f"restored file too small: {len(text)}")
+          text = text.replace(
+              '                      needsOffscreenAlphaCompositing={overlayStyle === "cutout"}\n',
+              "",
+          )
+          text = text.replace(
+              '  cameraView: { flex: 1, overflow: "hidden" },\n  cutoutCamera: { backgroundColor: "transparent", overflow: "visible" },',
+              '  cameraView: { backgroundColor: "transparent", flex: 1, overflow: "hidden" },\n  cutoutCamera: { backgroundColor: "transparent", overflow: "hidden" },',
+          )
+          path.write_text(text)
+          print("restored bytes", path.stat().st_size)
+          PY
+
+      - name: Commit and push
+        run: |
+          git config user.name "stlsmoko"
+          git config user.email "stlsmoko@users.noreply.github.com"
+          git add app/reaction-record.tsx
+          git diff --cached --stat
+          git commit -m "Restore full reaction recorder and keep Cutout camera visible"
+          git push origin HEAD:main
