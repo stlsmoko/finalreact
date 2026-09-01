@@ -6,6 +6,7 @@ import android.media.AudioManager
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Handler
+import android.os.SystemClock
 import android.os.Looper
 import android.util.Log
 import android.util.Size
@@ -41,6 +42,7 @@ import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
     private val onReady by EventDispatcher()
@@ -50,6 +52,10 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     private val analyzing = AtomicBoolean(false)
     private val readyOnce = AtomicBoolean(false)
     private val isolatePerson = AtomicBoolean(false)
+    private val analyzingSince = AtomicLong(0)
+    @Volatile private var lastConfidences: FloatArray? = null
+    @Volatile private var lastMaskWidth = 0
+    @Volatile private var lastMaskHeight = 0
 
     // Keep a live 1px TextureView so CameraX always has a surface. Hidden off the overlay.
     private val previewView = PreviewView(context).apply {
@@ -201,15 +207,13 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     }
 
     private fun analyzeFrame(imageProxy: ImageProxy) {
-        if (!analyzing.compareAndSet(false, true)) {
-            imageProxy.close()
-            return
+        if (analyzing.get() && SystemClock.uptimeMillis() - analyzingSince.get() > 700L) {
+            analyzing.set(false)
         }
         val rotation = imageProxy.imageInfo.rotationDegrees
         val raw = try {
             imageProxy.toBitmap()
         } catch (error: Exception) {
-            analyzing.set(false)
             imageProxy.close()
             Log.w(TAG, "Frame convert failed", error)
             return
@@ -224,35 +228,53 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         if (scaled !== square) square.recycle()
         val working = PersonCutout.asSoftwareArgb(scaled)
         if (working !== scaled) scaled.recycle()
-        // Show the live camera immediately so Cutout is not a blank wait while ML Kit loads.
-        if (!readyOnce.get()) {
-            val firstLook = working.copy(Bitmap.Config.ARGB_8888, false)
-            if (firstLook != null) showBitmap(firstLook)
+
+        val live = working.copy(Bitmap.Config.ARGB_8888, true) ?: working
+        val preview = if (isolatePerson.get()) {
+            val confidences = lastConfidences
+            val maskW = lastMaskWidth
+            val maskH = lastMaskHeight
+            if (confidences != null && maskW > 0 && maskH > 0) {
+                PersonCutout.applyFloatMask(live, confidences, maskW, maskH)
+            } else {
+                live
+            }
+        } else {
+            live
         }
-        val image = InputImage.fromBitmap(working, 0)
+        showBitmap(preview)
+
+        if (!analyzing.compareAndSet(false, true)) {
+            if (working !== live && working !== preview && !working.isRecycled) working.recycle()
+            return
+        }
+        analyzingSince.set(SystemClock.uptimeMillis())
         val client = segmenter
         if (client == null) {
-            showBitmap(working)
             analyzing.set(false)
             return
         }
+        val image = InputImage.fromBitmap(working, 0)
         client.process(image)
             .addOnSuccessListener { mask ->
-                val display = if (isolatePerson.get()) {
+                lastConfidences = PersonCutout.extractConfidences(mask.buffer, mask.width, mask.height)
+                lastMaskWidth = mask.width
+                lastMaskHeight = mask.height
+                if (isolatePerson.get()) {
                     val cutout = PersonCutout.applyConfidenceMask(working, mask.buffer, mask.width, mask.height)
-                    if (cutout === working) {
+                    val display = if (cutout === working) {
                         cutout.copy(Bitmap.Config.ARGB_8888, false) ?: cutout
                     } else {
                         cutout
                     }
-                } else {
-                    working.copy(Bitmap.Config.ARGB_8888, false) ?: working
+                    if (display !== working && !working.isRecycled) working.recycle()
+                    showBitmap(display)
+                } else if (working !== preview && !working.isRecycled) {
+                    working.recycle()
                 }
-                if (display !== working && !working.isRecycled) working.recycle()
-                showBitmap(display)
             }
             .addOnFailureListener { error ->
-                showBitmap(working)
+                if (working !== preview && !working.isRecycled) working.recycle()
                 Log.w(TAG, "Segmentation failed", error)
             }
             .addOnCompleteListener {

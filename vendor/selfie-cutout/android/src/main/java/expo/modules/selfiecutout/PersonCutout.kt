@@ -39,7 +39,33 @@ internal object PersonCutout {
         return Bitmap.createScaledBitmap(source, w, h, true)
     }
 
+    fun extractConfidences(buffer: ByteBuffer, maskWidth: Int, maskHeight: Int): FloatArray {
+        val safeMaskWidth = maskWidth.coerceAtLeast(1)
+        val safeMaskHeight = maskHeight.coerceAtLeast(1)
+        val maskCount = safeMaskWidth * safeMaskHeight
+        val ordered = buffer.duplicate()
+        ordered.order(ByteOrder.nativeOrder())
+        ordered.rewind()
+        val confidences = FloatArray(maskCount)
+        val remaining = ordered.remaining()
+        when {
+            remaining >= maskCount * 4 -> ordered.asFloatBuffer().get(confidences)
+            remaining >= maskCount -> {
+                val bytes = ByteArray(maskCount)
+                ordered.get(bytes)
+                for (i in 0 until maskCount) {
+                    confidences[i] = (bytes[i].toInt() and 0xFF) / 255f
+                }
+            }
+        }
+        return confidences
+    }
+
     fun applyConfidenceMask(frame: Bitmap, buffer: ByteBuffer, maskWidth: Int, maskHeight: Int): Bitmap {
+        return applyFloatMask(frame, extractConfidences(buffer, maskWidth, maskHeight), maskWidth, maskHeight)
+    }
+
+    fun applyFloatMask(frame: Bitmap, confidences: FloatArray, maskWidth: Int, maskHeight: Int): Bitmap {
         val width = frame.width.coerceAtLeast(1)
         val height = frame.height.coerceAtLeast(1)
         val safeMaskWidth = maskWidth.coerceAtLeast(1)
@@ -52,25 +78,6 @@ internal object PersonCutout {
 
         val pixels = IntArray(width * height)
         out.getPixels(pixels, 0, width, 0, 0, width, height)
-
-        val ordered = buffer.duplicate()
-        ordered.order(ByteOrder.nativeOrder())
-        ordered.rewind()
-        val maskCount = safeMaskWidth * safeMaskHeight
-        val remaining = ordered.remaining()
-        val confidences = FloatArray(maskCount)
-        when {
-            remaining >= maskCount * 4 -> {
-                ordered.asFloatBuffer().get(confidences)
-            }
-            remaining >= maskCount -> {
-                val bytes = ByteArray(maskCount)
-                ordered.get(bytes)
-                for (i in 0 until maskCount) {
-                    confidences[i] = (bytes[i].toInt() and 0xFF) / 255f
-                }
-            }
-        }
 
         var personPixels = 0
         for (y in 0 until height) {

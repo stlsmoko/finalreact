@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/refs */
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useEvent } from "expo";
+import { useEvent, useEventListener } from "expo";
 import { setAudioModeAsync } from "expo-audio";
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from "expo-camera";
 import { router, useIsFocused } from "expo-router";
@@ -117,6 +117,18 @@ export default function ReactionRecordScreen() {
     bufferedPosition: 0,
   });
   const observedSourceTime = timeUpdate?.currentTime ?? 0;
+
+  useEventListener(player, "playToEnd", () => {
+    try {
+      player.pause();
+      const duration = Number(player.duration);
+      if (Number.isFinite(duration) && duration > 0.05) {
+        player.currentTime = Math.max(0, duration - 0.04);
+      }
+    } catch {
+      // Keep the last decoded frame on screen. Camera recording continues until Stop.
+    }
+  });
 
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [microphonePermission, requestMicrophonePermission] = useMicrophonePermissions();
