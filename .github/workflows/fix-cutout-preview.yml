@@ -1,0 +1,168 @@
+name: Fix Cutout preview
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Patch native Cutout view and recorder
+        run: |
+          python3 - << 'PY'
+          from pathlib import Path
+
+          kt = Path("vendor/selfie-cutout/android/src/main/java/expo/modules/selfiecutout/SelfieCutoutView.kt")
+          text = kt.read_text()
+
+          old_set = '''    fun setIsolatePerson(enabled: Boolean) {
+        val wasEnabled = isolatePerson.getAndSet(enabled)
+        if (enabled) {
+            analyzing.set(false)
+            lastAnalyzeAt.set(0L)
+            shownFirstFrame.set(false)
+        }
+        if (wasEnabled == enabled) {
+            mainHandler.post { applyPreviewMode() }
+            return
+        }
+        mainHandler.post { applyPreviewMode() }
+    }'''
+
+          new_set = '''    fun setIsolatePerson(enabled: Boolean) {
+        isolatePerson.set(enabled)
+        if (enabled) {
+            analyzing.set(false)
+            lastAnalyzeAt.set(0L)
+            shownFirstFrame.set(false)
+        } else {
+            shownFirstFrame.set(false)
+            displayedBitmap = null
+            outputView.setImageBitmap(null)
+            outputView.setLayerType(LAYER_TYPE_HARDWARE, null)
+            setLayerType(LAYER_TYPE_NONE, null)
+        }
+        mainHandler.post { applyPreviewMode() }
+    }'''
+
+          old_mode = '''    private fun applyPreviewMode() {
+        val cutout = isolatePerson.get()
+        val hasFrame = displayedBitmap != null && displayedBitmap?.isRecycled == false
+        previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+        previewView.translationX = 0f
+        previewView.translationY = 0f
+        if (cutout && hasFrame) {
+            // Swap only after a real frame is on the ImageView. GONE avoids a
+            // TextureView/SurfaceView hole-punch that shows as a black square.
+            previewView.alpha = 1f
+            previewView.visibility = View.GONE
+            outputView.visibility = View.VISIBLE
+            outputView.bringToFront()
+        } else {
+            // Circle, square, or Cutout-before-first-frame: live camera only.
+            // Never show an empty ImageView — that is the black box.
+            previewView.visibility = View.VISIBLE
+            previewView.alpha = 1f
+            previewView.bringToFront()
+            outputView.visibility = View.GONE
+            if (!cutout) {
+                outputView.setImageBitmap(null)
+            }
+        }
+        previewView.requestLayout()
+        outputView.requestLayout()
+    }'''
+
+          new_mode = '''    private fun applyPreviewMode() {
+        val cutout = isolatePerson.get()
+        previewView.translationX = 0f
+        previewView.translationY = 0f
+        if (cutout) {
+            // Keep a 1px PreviewView so CameraX still has a surface, but never
+            // let that TextureView fill the bubble. The black square was that
+            // surface composited over the reel.
+            previewView.layoutParams = LayoutParams(1, 1)
+            previewView.alpha = 0f
+            previewView.visibility = View.VISIBLE
+            outputView.visibility = View.VISIBLE
+            outputView.bringToFront()
+            setLayerType(LAYER_TYPE_SOFTWARE, null)
+        } else {
+            previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+            previewView.visibility = View.VISIBLE
+            previewView.alpha = 1f
+            previewView.bringToFront()
+            outputView.visibility = View.GONE
+            outputView.setImageBitmap(null)
+            setLayerType(LAYER_TYPE_NONE, null)
+        }
+        previewView.requestLayout()
+        outputView.requestLayout()
+    }'''
+
+          old_show = '''            if (isolatePerson.get()) {
+                outputView.setLayerType(LAYER_TYPE_SOFTWARE, null)
+                outputView.visibility = View.VISIBLE
+                outputView.bringToFront()
+                outputView.invalidate()
+                previewView.visibility = View.GONE
+            } else {
+                outputView.visibility = View.GONE
+            }'''
+
+          new_show = '''            if (isolatePerson.get()) {
+                outputView.setLayerType(LAYER_TYPE_SOFTWARE, null)
+                outputView.visibility = View.VISIBLE
+                outputView.bringToFront()
+                outputView.invalidate()
+                previewView.layoutParams = LayoutParams(1, 1)
+                previewView.alpha = 0f
+                previewView.visibility = View.VISIBLE
+            } else {
+                outputView.visibility = View.GONE
+            }'''
+
+          if old_set not in text:
+              raise SystemExit('setIsolatePerson block not found')
+          if old_mode not in text:
+              raise SystemExit('applyPreviewMode block not found')
+          if old_show not in text:
+              raise SystemExit('showBitmap block not found')
+          text = text.replace(old_set, new_set).replace(old_mode, new_mode).replace(old_show, new_show)
+          kt.write_text(text)
+
+          js = Path("app/reaction-record.tsx")
+          rec = js.read_text()
+          if len(rec) < 20000:
+              raise SystemExit(f'recorder too small: {len(rec)}')
+          needle = '                      isolatePerson={overlayStyle === "cutout"}\n                      pointerEvents="none"\n                      collapsable={false}\n'
+          insert = needle + '                      needsOffscreenAlphaCompositing={overlayStyle === "cutout"}\n'
+          if 'needsOffscreenAlphaCompositing' not in rec:
+              if needle not in rec:
+                  raise SystemExit('recorder insert point not found')
+              rec = rec.replace(needle, insert, 1)
+          rec = rec.replace(
+              '  cutoutOverlay: { backgroundColor: "transparent", borderWidth: 0, elevation: 0, overflow: "visible", shadowOpacity: 0, shadowRadius: 0 },',
+              '  cutoutOverlay: { backgroundColor: "transparent", borderWidth: 0, elevation: 0, overflow: "hidden", shadowOpacity: 0, shadowRadius: 0 },',
+          )
+          js.write_text(rec)
+
+          cfg = Path("app.config.ts")
+          cfg.write_text(cfg.read_text().replace('version: "1.0.43"', 'version: "1.0.44"').replace('versionCode: 44', 'versionCode: 45'))
+          print('patched cutout preview')
+          PY
+
+      - name: Commit and push
+        run: |
+          git config user.name "stlsmoko"
+          git config user.email "stlsmoko@users.noreply.github.com"
+          git add vendor/selfie-cutout/android/src/main/java/expo/modules/selfiecutout/SelfieCutoutView.kt app/reaction-record.tsx app.config.ts
+          git diff --cached --stat
+          git commit -m "Stop Cutout TextureView from covering the reel with a black square"
+          git push origin HEAD:main
