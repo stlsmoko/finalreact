@@ -102,8 +102,16 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     }
 
     fun setIsolatePerson(enabled: Boolean) {
-        if (isolatePerson.get() == enabled) return
-        isolatePerson.set(enabled)
+        val wasEnabled = isolatePerson.getAndSet(enabled)
+        if (enabled) {
+            analyzing.set(false)
+            lastAnalyzeAt.set(0L)
+            shownFirstFrame.set(false)
+        }
+        if (wasEnabled == enabled) {
+            mainHandler.post { applyPreviewMode() }
+            return
+        }
         mainHandler.post { applyPreviewMode() }
     }
 
@@ -143,23 +151,27 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
 
     private fun applyPreviewMode() {
         val cutout = isolatePerson.get()
-        if (cutout) {
-            previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+        val hasFrame = displayedBitmap != null && displayedBitmap?.isRecycled == false
+        previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+        previewView.visibility = View.VISIBLE
+        previewView.translationX = 0f
+        previewView.translationY = 0f
+        if (cutout && hasFrame) {
+            // Only hide the live camera once the floating head is actually on the ImageView.
             previewView.alpha = 0.01f
-            previewView.translationX = 0f
-            previewView.translationY = 0f
-            previewView.visibility = View.VISIBLE
             outputView.visibility = View.VISIBLE
             outputView.bringToFront()
-        } else {
-            previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+        } else if (cutout) {
+            // Tap Cutout: keep the live camera up so the bubble is never empty.
             previewView.alpha = 1f
-            previewView.translationX = 0f
-            previewView.translationY = 0f
+            outputView.visibility = View.VISIBLE
+        } else {
+            previewView.alpha = 1f
             outputView.visibility = View.GONE
             outputView.setImageBitmap(null)
         }
         previewView.requestLayout()
+        outputView.requestLayout()
     }
 
     private fun startProvider() {
@@ -319,8 +331,12 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
             val previous = displayedBitmap
             displayedBitmap = display
             outputView.visibility = View.VISIBLE
+            outputView.bringToFront()
             outputView.setImageBitmap(display)
             outputView.invalidate()
+            if (isolatePerson.get()) {
+                previewView.alpha = 0.01f
+            }
             if (previous != null && previous !== display) {
                 mainHandler.postDelayed({
                     if (previous !== displayedBitmap && !previous.isRecycled) previous.recycle()
