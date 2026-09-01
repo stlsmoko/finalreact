@@ -54,6 +54,10 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     private val isolatePerson = AtomicBoolean(false)
     private val analyzingSince = AtomicLong(0)
     private val lastAnalyzeAt = AtomicLong(0)
+    @Volatile private var lastConfidences: FloatArray? = null
+    @Volatile private var lastMaskWidth = 0
+    @Volatile private var lastMaskHeight = 0
+    private val shownFirstFrame = AtomicBoolean(false)
 
     private val previewView = PreviewView(context).apply {
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
@@ -65,7 +69,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         scaleType = ImageView.ScaleType.CENTER_CROP
         setBackgroundColor(Color.TRANSPARENT)
-        setLayerType(LAYER_TYPE_HARDWARE, null)
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
         visibility = View.GONE
         adjustViewBounds = false
     }
@@ -119,6 +123,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         active = this
         bindAttempts = 0
         readyOnce.set(false)
+        shownFirstFrame.set(false)
         mainHandler.post {
             applyPreviewMode()
             startProvider()
@@ -139,11 +144,13 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     private fun applyPreviewMode() {
         val cutout = isolatePerson.get()
         if (cutout) {
-            previewView.layoutParams = FrameLayout.LayoutParams(2, 2, Gravity.TOP or Gravity.START)
-            previewView.alpha = 0.02f
-            previewView.translationX = -12f
-            previewView.translationY = -12f
+            previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+            previewView.alpha = 0.01f
+            previewView.translationX = 0f
+            previewView.translationY = 0f
+            previewView.visibility = View.VISIBLE
             outputView.visibility = View.VISIBLE
+            outputView.bringToFront()
         } else {
             previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
             previewView.alpha = 1f
@@ -205,8 +212,14 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
             } catch (_: Exception) {
                 provider.unbindAll()
                 try {
-                    provider.bindToLifecycle(lifecycleOwner, selector, preview, capture)
+                    provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
                     videoCapture = capture
+                    try {
+                        provider.unbindAll()
+                        provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis, capture)
+                    } catch (_: Exception) {
+                        videoCapture = capture
+                    }
                 } catch (_: Exception) {
                     provider.unbindAll()
                     provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis, capture)
@@ -264,6 +277,11 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         val working = PersonCutout.asSoftwareArgb(scaled)
         if (working !== scaled) scaled.recycle()
 
+        if (shownFirstFrame.compareAndSet(false, true)) {
+            val firstLook = working.copy(Bitmap.Config.ARGB_8888, false) ?: working
+            showBitmap(firstLook)
+        }
+
         val client = segmenter
         if (client == null) {
             showBitmap(working)
@@ -272,23 +290,22 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         }
         client.process(InputImage.fromBitmap(working, 0))
             .addOnSuccessListener { mask ->
+                lastConfidences = PersonCutout.extractConfidences(mask.buffer, mask.width, mask.height)
+                lastMaskWidth = mask.width
+                lastMaskHeight = mask.height
                 val cutout = PersonCutout.applyConfidenceMask(working, mask.buffer, mask.width, mask.height)
-                val visible = PersonCutout.hasVisiblePerson(cutout)
-                if (visible && isolatePerson.get()) {
-                    val display = if (cutout === working) {
-                        cutout.copy(Bitmap.Config.ARGB_8888, false) ?: cutout
-                    } else {
-                        cutout
-                    }
-                    if (display !== working && !working.isRecycled) working.recycle()
-                    showBitmap(display)
+                val display = if (cutout === working) {
+                    cutout.copy(Bitmap.Config.ARGB_8888, false) ?: cutout
                 } else {
-                    if (cutout !== working && !cutout.isRecycled) cutout.recycle()
-                    if (!working.isRecycled) working.recycle()
+                    cutout
                 }
+                if (display !== working && !working.isRecycled) working.recycle()
+                if (isolatePerson.get()) showBitmap(display)
+                else if (display !== working && !display.isRecycled) display.recycle()
             }
             .addOnFailureListener { error ->
-                if (!working.isRecycled) working.recycle()
+                if (isolatePerson.get() && !working.isRecycled) showBitmap(working)
+                else if (!working.isRecycled) working.recycle()
                 Log.w(TAG, "Segmentation failed", error)
             }
             .addOnCompleteListener {
@@ -301,6 +318,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
             if (display.isRecycled) return@post
             val previous = displayedBitmap
             displayedBitmap = display
+            outputView.visibility = View.VISIBLE
             outputView.setImageBitmap(display)
             outputView.invalidate()
             if (previous != null && previous !== display) {
