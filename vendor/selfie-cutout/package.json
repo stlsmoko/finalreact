@@ -8,5 +8,5 @@
     "expo": ">=57.0.0",
     "react-native": ">=0.86.0"
   },
-  "files": ["build", "android", "expo-module.config.json"]
+  "files": ["app.plugin.js", "build", "android", "expo-module.config.json"]
 }

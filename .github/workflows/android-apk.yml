@@ -52,7 +52,7 @@ jobs:
           if [ -d /tmp/donor/vendor/ffmpeg-expo/build ]; then cp -a /tmp/donor/vendor/ffmpeg-expo/build node_modules/ffmpeg-expo/; fi
           if [ -d /tmp/donor/vendor/reel-importer/build ]; then cp -a /tmp/donor/vendor/reel-importer/build node_modules/reel-importer/; fi
           if [ -d vendor/reel-importer/build ] && [ ! -L node_modules/reel-importer ]; then cp -a vendor/reel-importer/build node_modules/reel-importer/; fi
-          if [ -d vendor/selfie-cutout ] && [ ! -e node_modules/selfie-cutout/build/index.js ]; then
+          if [ -d vendor/selfie-cutout ]; then
             mkdir -p node_modules/selfie-cutout
             cp -a vendor/selfie-cutout/. node_modules/selfie-cutout/
           fi
@@ -69,11 +69,15 @@ jobs:
           fi
           if [ ! -f node_modules/selfie-cutout/build/index.js ]; then
             mkdir -p node_modules/selfie-cutout/build
-            printf '%s\n' 'const { requireNativeModule } = require("expo-modules-core"); const native = requireNativeModule("SelfieCutout"); module.exports = { createPersonMask: (uri) => native.createPersonMask(uri), default: { createPersonMask: (uri) => native.createPersonMask(uri) } };' > node_modules/selfie-cutout/build/index.js
+            printf '%s\n' 'module.exports = { createPersonMask: async () => { throw new Error("Cutout engine missing"); }, startRecording: async () => { throw new Error("Cutout camera missing"); }, stopRecording: async () => undefined, warmUp: async () => undefined, SelfieCutoutView: null, default: { SelfieCutoutView: null } };' > node_modules/selfie-cutout/build/index.js
+          fi
+          if [ ! -f node_modules/selfie-cutout/app.plugin.js ]; then
+            printf '%s\n' 'module.exports = function withSelfieCutout(config) { return config; };' > node_modules/selfie-cutout/app.plugin.js
           fi
           test -f node_modules/ffmpeg-expo/plugin/build/index.js
           test -f node_modules/reel-importer/build/index.js
           test -f node_modules/selfie-cutout/build/index.js
+          test -f node_modules/selfie-cutout/app.plugin.js
 
       - name: Point Android bundle at Expo app
         run: |
