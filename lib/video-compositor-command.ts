@@ -164,7 +164,7 @@ export function buildCompositeCommand(
   const hasPersonMask = overlayStyle === "cutout" && Boolean(maskPattern);
   const maskFps = Number.isFinite(request.maskFps) && (request.maskFps as number) > 0
     ? seconds(request.maskFps as number)
-    : "8";
+    : "12";
   const stopDurationSec = Number.isFinite(request.stopDurationSec) && (request.stopDurationSec ?? 0) > 0.05
     ? seconds(request.stopDurationSec as number)
     : null;
@@ -177,17 +177,17 @@ export function buildCompositeCommand(
   const reactionFilters = buildReactionFilters(overlayStyle, overlay.size, hasPersonMask);
   const timelineFilters = stopDurationSec
     ? [
-        `[background]trim=duration=${stopDurationSec},setpts=PTS-STARTPTS[background_trimmed]`,
-        `[reaction]trim=duration=${stopDurationSec},setpts=PTS-STARTPTS[reaction_trimmed]`,
-        `[source_audio]atrim=duration=${stopDurationSec},asetpts=PTS-STARTPTS[source_audio_trimmed]`,
+        `[background]tpad=stop=-1:stop_mode=clone,trim=duration=${stopDurationSec},setpts=PTS-STARTPTS[background_trimmed]`,
+        `[reaction]tpad=stop=-1:stop_mode=clone,trim=duration=${stopDurationSec},setpts=PTS-STARTPTS[reaction_trimmed]`,
+        `[source_audio]apad,atrim=duration=${stopDurationSec},asetpts=PTS-STARTPTS[source_audio_trimmed]`,
       ]
     : [];
   const backgroundLabel = stopDurationSec ? "[background_trimmed]" : "[background]";
   const reactionLabel = stopDurationSec ? "[reaction_trimmed]" : "[reaction]";
   const sourceAudioLabel = stopDurationSec ? "[source_audio_trimmed]" : "[source_audio]";
-  const reactionAudioPrefix = stopDurationSec ? `[1:a]atrim=duration=${stopDurationSec},` : "[1:a]";
-  const overlayEofAction = stopDurationSec ? "pass" : "endall";
-  const overlayRepeatLast = hasPersonMask ? 1 : 0;
+  const reactionAudioPrefix = stopDurationSec ? `[1:a]apad,atrim=duration=${stopDurationSec},` : "[1:a]";
+  const overlayEofAction = "pass";
+  const overlayRepeatLast = 1;
   const mixDuration = stopDurationSec ? "longest" : "shortest";
   const filter = [
     ...buildSourceTimelineFilters(request.sourcePauses),
