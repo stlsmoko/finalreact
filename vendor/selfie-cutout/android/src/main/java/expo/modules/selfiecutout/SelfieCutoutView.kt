@@ -10,9 +10,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.util.Size
-import android.view.Gravity
 import android.view.View
-import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -57,7 +55,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     @Volatile private var lastConfidences: FloatArray? = null
     @Volatile private var lastMaskWidth = 0
     @Volatile private var lastMaskHeight = 0
-    private val shownFirstFrame = AtomicBoolean(false)
+    private val personOnScreen = AtomicBoolean(false)
 
     private val previewView = PreviewView(context).apply {
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
@@ -69,8 +67,6 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         scaleType = ImageView.ScaleType.CENTER_CROP
         setBackgroundColor(Color.TRANSPARENT)
-        // Hardware layer keeps an empty ImageView transparent. A software
-        // layer with no bitmap paints as an opaque black rectangle on Android.
         setLayerType(LAYER_TYPE_HARDWARE, null)
         visibility = View.GONE
         adjustViewBounds = false
@@ -106,17 +102,16 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     }
 
     fun setIsolatePerson(enabled: Boolean) {
-        val wasEnabled = isolatePerson.getAndSet(enabled)
-        if (enabled) {
-            analyzing.set(false)
-            lastAnalyzeAt.set(0L)
-            shownFirstFrame.set(false)
+        isolatePerson.set(enabled)
+        personOnScreen.set(false)
+        mainHandler.post {
+            outputView.setImageBitmap(null)
+            outputView.setLayerType(LAYER_TYPE_HARDWARE, null)
+            outputView.visibility = View.GONE
+            displayedBitmap?.let { if (!it.isRecycled) it.recycle() }
+            displayedBitmap = null
+            applyPreviewMode()
         }
-        if (wasEnabled == enabled) {
-            mainHandler.post { applyPreviewMode() }
-            return
-        }
-        mainHandler.post { applyPreviewMode() }
     }
 
     fun setFacing(nextFacing: String) {
@@ -135,7 +130,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         active = this
         bindAttempts = 0
         readyOnce.set(false)
-        shownFirstFrame.set(false)
+        personOnScreen.set(false)
         mainHandler.post {
             applyPreviewMode()
             startProvider()
@@ -154,28 +149,18 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     }
 
     private fun applyPreviewMode() {
-        val cutout = isolatePerson.get()
-        val hasFrame = displayedBitmap != null && displayedBitmap?.isRecycled == false
+        val cutoutReady = isolatePerson.get() && personOnScreen.get() &&
+            displayedBitmap != null && displayedBitmap?.isRecycled == false
         previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
-        previewView.translationX = 0f
-        previewView.translationY = 0f
-        if (cutout && hasFrame) {
-            // Swap only after a real frame is on the ImageView. GONE avoids a
-            // TextureView/SurfaceView hole-punch that shows as a black square.
-            previewView.alpha = 1f
+        if (cutoutReady) {
             previewView.visibility = View.GONE
             outputView.visibility = View.VISIBLE
             outputView.bringToFront()
         } else {
-            // Circle, square, or Cutout-before-first-frame: live camera only.
-            // Never show an empty ImageView — that is the black box.
             previewView.visibility = View.VISIBLE
             previewView.alpha = 1f
             previewView.bringToFront()
             outputView.visibility = View.GONE
-            if (!cutout) {
-                outputView.setImageBitmap(null)
-            }
         }
         previewView.requestLayout()
         outputView.requestLayout()
@@ -208,7 +193,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         val analysis = ImageAnalysis.Builder()
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-            .setTargetResolution(Size(160, 160))
+            .setTargetResolution(Size(240, 240))
             .build()
             .also { useCase ->
                 useCase.setAnalyzer(analysisExecutor, ::analyzeFrame)
@@ -269,7 +254,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         if (analyzing.get() && now - analyzingSince.get() > 900L) {
             analyzing.set(false)
         }
-        if (now - lastAnalyzeAt.get() < 90L || !analyzing.compareAndSet(false, true)) {
+        if (now - lastAnalyzeAt.get() < 70L || !analyzing.compareAndSet(false, true)) {
             imageProxy.close()
             return
         }
@@ -291,19 +276,14 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         if (bitmap !== raw) raw.recycle()
         val square = PersonCutout.centerCropSquare(bitmap)
         if (square !== bitmap) bitmap.recycle()
-        val scaled = PersonCutout.scaleToMax(square, 192)
+        val scaled = PersonCutout.scaleToMax(square, 256)
         if (scaled !== square) square.recycle()
         val working = PersonCutout.asSoftwareArgb(scaled)
         if (working !== scaled) scaled.recycle()
 
-        if (shownFirstFrame.compareAndSet(false, true)) {
-            val firstLook = working.copy(Bitmap.Config.ARGB_8888, false) ?: working
-            showBitmap(firstLook)
-        }
-
         val client = segmenter
         if (client == null) {
-            showBitmap(working)
+            working.recycle()
             analyzing.set(false)
             return
         }
@@ -319,36 +299,40 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
                     cutout
                 }
                 if (display !== working && !working.isRecycled) working.recycle()
-                if (isolatePerson.get()) showBitmap(display)
-                else if (display !== working && !display.isRecycled) display.recycle()
+                if (isolatePerson.get() && PersonCutout.hasVisiblePerson(display)) {
+                    showIsolatedBitmap(display)
+                } else {
+                    if (display !== working && !display.isRecycled) display.recycle()
+                    personOnScreen.set(false)
+                    mainHandler.post { applyPreviewMode() }
+                }
             }
             .addOnFailureListener { error ->
-                if (isolatePerson.get() && !working.isRecycled) showBitmap(working)
-                else if (!working.isRecycled) working.recycle()
+                if (!working.isRecycled) working.recycle()
                 Log.w(TAG, "Segmentation failed", error)
+                personOnScreen.set(false)
+                mainHandler.post { applyPreviewMode() }
             }
             .addOnCompleteListener {
                 analyzing.set(false)
             }
     }
 
-    private fun showBitmap(display: Bitmap) {
+    private fun showIsolatedBitmap(display: Bitmap) {
         mainHandler.post {
-            if (display.isRecycled) return@post
+            if (display.isRecycled || !isolatePerson.get()) {
+                if (!display.isRecycled) display.recycle()
+                return@post
+            }
             val previous = displayedBitmap
             displayedBitmap = display
-            // Switch to software only after we have an ARGB cutout so alpha
-            // punches through to the reel. Do this after setImageBitmap.
+            personOnScreen.set(true)
+            outputView.setLayerType(LAYER_TYPE_HARDWARE, null)
             outputView.setImageBitmap(display)
-            if (isolatePerson.get()) {
-                outputView.setLayerType(LAYER_TYPE_SOFTWARE, null)
-                outputView.visibility = View.VISIBLE
-                outputView.bringToFront()
-                outputView.invalidate()
-                previewView.visibility = View.GONE
-            } else {
-                outputView.visibility = View.GONE
-            }
+            outputView.visibility = View.VISIBLE
+            outputView.bringToFront()
+            outputView.invalidate()
+            previewView.visibility = View.GONE
             if (previous != null && previous !== display) {
                 mainHandler.postDelayed({
                     if (previous !== displayedBitmap && !previous.isRecycled) previous.recycle()
