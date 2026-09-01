@@ -110,8 +110,9 @@ export async function importPublicVideoFromPage(pageUrl: string): Promise<Import
   const directUrl = await scrapeDirectVideoUrl(pageUrl);
   if (!directUrl) return null;
 
-  const destination = `${FileSystem.cacheDirectory}reel-reactor-import-${Date.now()}.mp4`;
+  const destination = `${FileSystem.cacheDirectory}reel-reactor-imports/reel-reactor-import-${Date.now()}.mp4`;
   try {
+    await FileSystem.makeDirectoryAsync(`${FileSystem.cacheDirectory}reel-reactor-imports`, { intermediates: true }).catch(() => undefined);
     const downloaded = await FileSystem.downloadAsync(directUrl, destination, {
       headers: {
         "User-Agent": BROWSER_USER_AGENT,

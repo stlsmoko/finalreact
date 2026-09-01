@@ -4,7 +4,9 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioManager
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.PorterDuff
 import android.os.Handler
 import android.os.SystemClock
 import android.os.Looper
@@ -132,6 +134,9 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         stopRecordingInternal(errorMessage = "Cutout camera closed.")
         restoreMediaAudio()
         cameraProvider?.unbindAll()
+        outputView.setImageBitmap(null)
+        displayedBitmap?.let { if (!it.isRecycled) it.recycle() }
+        displayedBitmap = null
         super.onDetachedFromWindow()
     }
 
@@ -162,7 +167,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         val analysis = ImageAnalysis.Builder()
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-            .setTargetResolution(Size(256, 320))
+            .setTargetResolution(Size(192, 256))
             .build()
             .also { useCase ->
                 useCase.setAnalyzer(analysisExecutor, ::analyzeFrame)
@@ -224,7 +229,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
 
         val square = PersonCutout.centerCropSquare(bitmap)
         if (square !== bitmap) bitmap.recycle()
-        val scaled = PersonCutout.scaleToMax(square, 320)
+        val scaled = PersonCutout.scaleToMax(square, 256)
         if (scaled !== square) square.recycle()
         val working = PersonCutout.asSoftwareArgb(scaled)
         if (working !== scaled) scaled.recycle()
@@ -257,11 +262,14 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         val image = InputImage.fromBitmap(working, 0)
         client.process(image)
             .addOnSuccessListener { mask ->
-                lastConfidences = PersonCutout.extractConfidences(mask.buffer, mask.width, mask.height)
-                lastMaskWidth = mask.width
-                lastMaskHeight = mask.height
-                if (isolatePerson.get()) {
-                    val cutout = PersonCutout.applyConfidenceMask(working, mask.buffer, mask.width, mask.height)
+                val cutout = PersonCutout.applyConfidenceMask(working, mask.buffer, mask.width, mask.height)
+                val visible = PersonCutout.hasVisiblePerson(cutout)
+                if (visible) {
+                    lastConfidences = PersonCutout.extractConfidences(mask.buffer, mask.width, mask.height)
+                    lastMaskWidth = mask.width
+                    lastMaskHeight = mask.height
+                }
+                if (isolatePerson.get() && visible) {
                     val display = if (cutout === working) {
                         cutout.copy(Bitmap.Config.ARGB_8888, false) ?: cutout
                     } else {
@@ -269,8 +277,9 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
                     }
                     if (display !== working && !working.isRecycled) working.recycle()
                     showBitmap(display)
-                } else if (working !== preview && !working.isRecycled) {
-                    working.recycle()
+                } else {
+                    if (cutout !== working && !cutout.isRecycled) cutout.recycle()
+                    if (working !== preview && !working.isRecycled) working.recycle()
                 }
             }
             .addOnFailureListener { error ->
@@ -284,11 +293,19 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
 
     private fun showBitmap(display: Bitmap) {
         mainHandler.post {
-            val previous = displayedBitmap
-            displayedBitmap = display
-            outputView.setImageBitmap(display)
+            if (display.isRecycled) return@post
+            var target = displayedBitmap
+            if (target == null || target.isRecycled || target.width != display.width || target.height != display.height) {
+                target = Bitmap.createBitmap(display.width, display.height, Bitmap.Config.ARGB_8888)
+                displayedBitmap?.let { old -> if (!old.isRecycled && old !== display) old.recycle() }
+                displayedBitmap = target
+                outputView.setImageBitmap(target)
+            }
+            val canvas = Canvas(target)
+            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+            canvas.drawBitmap(display, 0f, 0f, null)
             outputView.invalidate()
-            if (previous != null && previous !== display && !previous.isRecycled) previous.recycle()
+            if (display !== target && !display.isRecycled) display.recycle()
             if (readyOnce.compareAndSet(false, true)) {
                 onReady(mapOf("ready" to true))
             }

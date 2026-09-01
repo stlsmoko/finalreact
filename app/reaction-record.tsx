@@ -29,6 +29,7 @@ import {
   getRecordingStartBlocker,
   type OverlayPosition,
 } from "@/lib/reaction-project";
+import { pruneReactionCache } from "@/lib/reaction-cache";
 import { getCurrentSource, setCurrentReaction, setCurrentSource } from "@/lib/reaction-session";
 import { composeReactionVideo } from "@/lib/video-compositor";
 import SelfieCutoutNative from "selfie-cutout";
@@ -235,7 +236,8 @@ export default function ReactionRecordScreen() {
   useEffect(() => {
     if (Platform.OS === "web") return;
     SelfieCutoutNative.warmUp?.().catch(() => undefined);
-  }, []);
+    pruneReactionCache(source?.uri).catch(() => undefined);
+  }, [source?.uri]);
 
   useEffect(() => {
     if (Platform.OS === "web") return;

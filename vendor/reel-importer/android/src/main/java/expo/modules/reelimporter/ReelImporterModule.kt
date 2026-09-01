@@ -167,6 +167,9 @@ class ReelImporterModule : Module() {
                     if (!importsDirectory.exists() && !importsDirectory.mkdirs()) {
                         throw IllegalStateException("Reel Reactor could not create local video storage.")
                     }
+                    importsDirectory.listFiles()?.filter { file ->
+                        file.isFile && file.lastModified() < System.currentTimeMillis() - 20 * 60 * 1000L
+                    }?.forEach { it.delete() }
 
                     val startedAt = System.currentTimeMillis()
                     val htmlOutput = File(importsDirectory, "reaction-source-$startedAt.mp4")
@@ -180,11 +183,6 @@ class ReelImporterModule : Module() {
                     }
 
                     YoutubeDL.getInstance().init(context)
-                    try {
-                        YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel._STABLE)
-                    } catch (updateError: Exception) {
-                        Log.w("ReelImporter", "Could not refresh yt-dlp; using the bundled extractor.", updateError)
-                    }
 
                     val outputTemplate = File(importsDirectory, "reaction-source-$startedAt.%(ext)s").absolutePath
                     val request = YoutubeDLRequest(url)

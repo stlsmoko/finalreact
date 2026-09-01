@@ -133,7 +133,7 @@ class SelfieCutoutModule : Module() {
                 if (frame != null) {
                     val square = PersonCutout.centerCropSquare(frame)
                     if (square !== frame) frame.recycle()
-                    val scaled = PersonCutout.scaleToMax(square, 320)
+                    val scaled = PersonCutout.scaleToMax(square, 256)
                     if (scaled !== square) square.recycle()
                     val working = PersonCutout.asSoftwareArgb(scaled)
                     if (working !== scaled) scaled.recycle()
@@ -213,8 +213,8 @@ class SelfieCutoutModule : Module() {
 
     companion object {
         private const val TAG = "SelfieCutout"
-        private const val MASK_FPS_SHORT = 12.0
-        private const val MASK_FPS_LONG = 10.0
-        private const val MAX_FRAMES = 180
+        private const val MASK_FPS_SHORT = 8.0
+        private const val MASK_FPS_LONG = 6.0
+        private const val MAX_FRAMES = 96
     }
 }

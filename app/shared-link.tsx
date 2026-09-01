@@ -1,10 +1,11 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { normalizeSharedLink } from "@/lib/reaction-project";
+import { pruneReactionCache } from "@/lib/reaction-cache";
 import { getCurrentSharedLink, setCurrentSharedLink, setCurrentSource } from "@/lib/reaction-session";
 
 export default function SharedLinkScreen() {
@@ -13,6 +14,7 @@ export default function SharedLinkScreen() {
   const existingLink = getCurrentSharedLink();
   const normalizedIncoming = incomingUrl ? normalizeSharedLink(incomingUrl) : null;
   const sharedUrl = normalizedIncoming ?? existingLink?.url ?? null;
+  const startedRef = useRef(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
 
@@ -21,6 +23,12 @@ export default function SharedLinkScreen() {
       setCurrentSharedLink({ url: normalizedIncoming, capturedAt: Date.now() });
     }
   }, [normalizedIncoming]);
+
+  useEffect(() => {
+    if (!sharedUrl || startedRef.current) return;
+    startedRef.current = true;
+    void importPublicVideo();
+  }, [sharedUrl]);
 
   const sourceName = useMemo(() => {
     if (!sharedUrl) return "Shared link";
@@ -40,20 +48,22 @@ export default function SharedLinkScreen() {
       let importedUri: string | null = null;
       let importedName: string = "Imported Video";
 
-      // 1. Try server-side extractor & high-performance streaming proxy (available everywhere, web + app)
-      try {
-        const resp = await fetch("/api/import-media", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: sharedUrl }),
-        });
-        const data = await resp.json();
-        if (resp.ok && data.success && (data.streamUrl || data.directUrl)) {
-          importedUri = data.streamUrl || data.directUrl;
-          importedName = data.title || `${sourceName} Clip`;
+      // On a phone, skip the website extractor — it just adds wait. Go straight to the on-device downloader.
+      if (Platform.OS === "web") {
+        try {
+          const resp = await fetch("/api/import-media", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: sharedUrl }),
+          });
+          const data = await resp.json();
+          if (resp.ok && data.success && (data.streamUrl || data.directUrl)) {
+            importedUri = data.streamUrl || data.directUrl;
+            importedName = data.title || `${sourceName} Clip`;
+          }
+        } catch {
+          // Fall back to on-device extractors.
         }
-      } catch {
-        // Fall back to on-device extractors.
       }
 
       // 2. Public Facebook / social pages often expose a direct mp4. Scrape and download it on-device.
@@ -99,7 +109,8 @@ export default function SharedLinkScreen() {
         width: undefined,
         height: undefined,
       });
-      router.replace("/source-setup" as never);
+      pruneReactionCache(importedUri).catch(() => undefined);
+      router.replace("/reaction-record" as never);
     } catch (error) {
       setImportError(
         error instanceof Error
@@ -161,7 +172,7 @@ export default function SharedLinkScreen() {
             <MaterialIcons name="download" size={22} color="#080B11" />
           )}
           <Text style={styles.primaryLabel}>
-            {isImporting ? "Importing video…" : "Download & react"}
+            {isImporting ? "Getting your clip…" : "Download & react"}
           </Text>
         </Pressable>
       ) : null}
