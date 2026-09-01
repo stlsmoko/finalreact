@@ -115,8 +115,8 @@ class SelfieCutoutModule : Module() {
                 ?.toLongOrNull()
                 ?.coerceAtLeast(0L)
                 ?: 0L
-            val fps = if (durationMs >= 4_000L) MASK_FPS_LONG else MASK_FPS_SHORT
-            val frameIntervalUs = (1_000_000.0 / fps).toLong().coerceAtLeast(80_000L)
+            val fps = if (durationMs >= 8_000L) MASK_FPS_LONG else MASK_FPS_SHORT
+            val frameIntervalUs = (1_000_000.0 / fps).toLong().coerceAtLeast(66_000L)
             val lastTimeUs = if (durationMs <= 0L) 0L else durationMs * 1_000L
 
             val outputDir = File(context.cacheDir, "reel-reactor-cutout-${System.currentTimeMillis()}")
@@ -161,11 +161,17 @@ class SelfieCutoutModule : Module() {
                 throw IllegalStateException("Cutout did not produce any person frames.")
             }
 
+            val playbackFps = if (durationMs > 250L && frameIndex > 1) {
+                (frameIndex * 1000.0 / durationMs).coerceIn(8.0, 18.0)
+            } else {
+                fps
+            }
+
             lastCutout?.recycle()
             return mapOf(
                 "directory" to "file://${outputDir.absolutePath}",
                 "pattern" to "${outputDir.absolutePath}/cutout_%05d.png",
-                "fps" to fps,
+                "fps" to playbackFps,
                 "frameCount" to frameIndex
             )
         } finally {
@@ -213,8 +219,8 @@ class SelfieCutoutModule : Module() {
 
     companion object {
         private const val TAG = "SelfieCutout"
-        private const val MASK_FPS_SHORT = 8.0
-        private const val MASK_FPS_LONG = 6.0
-        private const val MAX_FRAMES = 96
+        private const val MASK_FPS_SHORT = 15.0
+        private const val MASK_FPS_LONG = 12.0
+        private const val MAX_FRAMES = 360
     }
 }
