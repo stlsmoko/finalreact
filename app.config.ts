@@ -43,7 +43,7 @@ const env = {
 const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
-  version: "1.0.41",
+  version: "1.0.42",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -64,7 +64,7 @@ const config: ExpoConfig = {
     },
     predictiveBackGestureEnabled: false,
     package: androidPackage,
-    versionCode: 42,
+    versionCode: 43,
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [
       {
@@ -95,6 +95,7 @@ const config: ExpoConfig = {
     "expo-status-bar",
     "expo-web-browser",
     "ffmpeg-expo",
+    "selfie-cutout",
     "./plugins/with-legacy-android-architecture",
     "./plugins/with-ytdlp-native-extraction",
     [
