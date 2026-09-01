@@ -2,14 +2,12 @@ package expo.modules.selfiecutout
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.media.AudioManager
 import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.PorterDuff
+import android.media.AudioManager
 import android.os.Handler
-import android.os.SystemClock
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.util.Size
 import android.view.Gravity
@@ -55,25 +53,20 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     private val readyOnce = AtomicBoolean(false)
     private val isolatePerson = AtomicBoolean(false)
     private val analyzingSince = AtomicLong(0)
-    @Volatile private var lastConfidences: FloatArray? = null
-    @Volatile private var lastMaskWidth = 0
-    @Volatile private var lastMaskHeight = 0
+    private val lastAnalyzeAt = AtomicLong(0)
 
-    // Keep a live 1px TextureView so CameraX always has a surface. Hidden off the overlay.
     private val previewView = PreviewView(context).apply {
-        layoutParams = FrameLayout.LayoutParams(2, 2, Gravity.TOP or Gravity.START)
+        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         scaleType = PreviewView.ScaleType.FILL_CENTER
         visibility = View.VISIBLE
-        alpha = 0.01f
-        translationX = -8f
-        translationY = -8f
     }
     private val outputView = ImageView(context).apply {
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         scaleType = ImageView.ScaleType.CENTER_CROP
         setBackgroundColor(Color.TRANSPARENT)
-        setLayerType(LAYER_TYPE_SOFTWARE, null)
+        setLayerType(LAYER_TYPE_HARDWARE, null)
+        visibility = View.GONE
         adjustViewBounds = false
     }
 
@@ -90,11 +83,9 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
 
     init {
         setBackgroundColor(Color.TRANSPARENT)
-        setLayerType(LAYER_TYPE_SOFTWARE, null)
         clipToOutline = false
         clipChildren = false
         clipToPadding = false
-        setWillNotDraw(false)
         addView(previewView)
         addView(outputView)
         outputView.scaleX = -1f
@@ -107,7 +98,9 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     }
 
     fun setIsolatePerson(enabled: Boolean) {
+        if (isolatePerson.get() == enabled) return
         isolatePerson.set(enabled)
+        mainHandler.post { applyPreviewMode() }
     }
 
     fun setFacing(nextFacing: String) {
@@ -126,7 +119,10 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         active = this
         bindAttempts = 0
         readyOnce.set(false)
-        mainHandler.post { startProvider() }
+        mainHandler.post {
+            applyPreviewMode()
+            startProvider()
+        }
     }
 
     override fun onDetachedFromWindow() {
@@ -138,6 +134,25 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         displayedBitmap?.let { if (!it.isRecycled) it.recycle() }
         displayedBitmap = null
         super.onDetachedFromWindow()
+    }
+
+    private fun applyPreviewMode() {
+        val cutout = isolatePerson.get()
+        if (cutout) {
+            previewView.layoutParams = FrameLayout.LayoutParams(2, 2, Gravity.TOP or Gravity.START)
+            previewView.alpha = 0.02f
+            previewView.translationX = -12f
+            previewView.translationY = -12f
+            outputView.visibility = View.VISIBLE
+        } else {
+            previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+            previewView.alpha = 1f
+            previewView.translationX = 0f
+            previewView.translationY = 0f
+            outputView.visibility = View.GONE
+            outputView.setImageBitmap(null)
+        }
+        previewView.requestLayout()
     }
 
     private fun startProvider() {
@@ -167,7 +182,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         val analysis = ImageAnalysis.Builder()
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-            .setTargetResolution(Size(192, 256))
+            .setTargetResolution(Size(160, 160))
             .build()
             .also { useCase ->
                 useCase.setAnalyzer(analysisExecutor, ::analyzeFrame)
@@ -175,8 +190,8 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         val recorder = Recorder.Builder()
             .setQualitySelector(
                 QualitySelector.fromOrderedList(
-                    listOf(Quality.HD, Quality.SD, Quality.LOWEST),
-                    FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)
+                    listOf(Quality.SD, Quality.LOWEST, Quality.HD),
+                    FallbackStrategy.lowerQualityOrHigherThan(Quality.LOWEST)
                 )
             )
             .build()
@@ -189,17 +204,19 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
                 provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis, capture)
             } catch (_: Exception) {
                 provider.unbindAll()
-                provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
-                videoCapture = capture
                 try {
-                    provider.unbindAll()
-                    provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis, capture)
+                    provider.bindToLifecycle(lifecycleOwner, selector, preview, capture)
+                    videoCapture = capture
                 } catch (_: Exception) {
                     provider.unbindAll()
-                    provider.bindToLifecycle(lifecycleOwner, selector, analysis, capture)
+                    provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis, capture)
                 }
             }
             bindAttempts = 0
+            applyPreviewMode()
+            if (readyOnce.compareAndSet(false, true)) {
+                onReady(mapOf("ready" to true))
+            }
         } catch (error: Exception) {
             Log.w(TAG, "Bind failed, retrying", error)
             if (bindAttempts < 6) {
@@ -212,64 +229,52 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     }
 
     private fun analyzeFrame(imageProxy: ImageProxy) {
-        if (analyzing.get() && SystemClock.uptimeMillis() - analyzingSince.get() > 700L) {
+        if (!isolatePerson.get()) {
+            imageProxy.close()
+            return
+        }
+        val now = SystemClock.uptimeMillis()
+        if (analyzing.get() && now - analyzingSince.get() > 900L) {
             analyzing.set(false)
         }
+        if (now - lastAnalyzeAt.get() < 90L || !analyzing.compareAndSet(false, true)) {
+            imageProxy.close()
+            return
+        }
+        lastAnalyzeAt.set(now)
+        analyzingSince.set(now)
+
         val rotation = imageProxy.imageInfo.rotationDegrees
         val raw = try {
             imageProxy.toBitmap()
         } catch (error: Exception) {
+            analyzing.set(false)
             imageProxy.close()
             Log.w(TAG, "Frame convert failed", error)
             return
         }
         imageProxy.close()
+
         val bitmap = PersonCutout.rotate(raw, rotation)
         if (bitmap !== raw) raw.recycle()
-
         val square = PersonCutout.centerCropSquare(bitmap)
         if (square !== bitmap) bitmap.recycle()
-        val scaled = PersonCutout.scaleToMax(square, 256)
+        val scaled = PersonCutout.scaleToMax(square, 192)
         if (scaled !== square) square.recycle()
         val working = PersonCutout.asSoftwareArgb(scaled)
         if (working !== scaled) scaled.recycle()
 
-        val live = working.copy(Bitmap.Config.ARGB_8888, true) ?: working
-        val preview = if (isolatePerson.get()) {
-            val confidences = lastConfidences
-            val maskW = lastMaskWidth
-            val maskH = lastMaskHeight
-            if (confidences != null && maskW > 0 && maskH > 0) {
-                PersonCutout.applyFloatMask(live, confidences, maskW, maskH)
-            } else {
-                live
-            }
-        } else {
-            live
-        }
-        showBitmap(preview)
-
-        if (!analyzing.compareAndSet(false, true)) {
-            if (working !== live && working !== preview && !working.isRecycled) working.recycle()
-            return
-        }
-        analyzingSince.set(SystemClock.uptimeMillis())
         val client = segmenter
         if (client == null) {
+            showBitmap(working)
             analyzing.set(false)
             return
         }
-        val image = InputImage.fromBitmap(working, 0)
-        client.process(image)
+        client.process(InputImage.fromBitmap(working, 0))
             .addOnSuccessListener { mask ->
                 val cutout = PersonCutout.applyConfidenceMask(working, mask.buffer, mask.width, mask.height)
                 val visible = PersonCutout.hasVisiblePerson(cutout)
-                if (visible) {
-                    lastConfidences = PersonCutout.extractConfidences(mask.buffer, mask.width, mask.height)
-                    lastMaskWidth = mask.width
-                    lastMaskHeight = mask.height
-                }
-                if (isolatePerson.get() && visible) {
+                if (visible && isolatePerson.get()) {
                     val display = if (cutout === working) {
                         cutout.copy(Bitmap.Config.ARGB_8888, false) ?: cutout
                     } else {
@@ -279,11 +284,11 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
                     showBitmap(display)
                 } else {
                     if (cutout !== working && !cutout.isRecycled) cutout.recycle()
-                    if (working !== preview && !working.isRecycled) working.recycle()
+                    if (!working.isRecycled) working.recycle()
                 }
             }
             .addOnFailureListener { error ->
-                if (working !== preview && !working.isRecycled) working.recycle()
+                if (!working.isRecycled) working.recycle()
                 Log.w(TAG, "Segmentation failed", error)
             }
             .addOnCompleteListener {
@@ -294,20 +299,14 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     private fun showBitmap(display: Bitmap) {
         mainHandler.post {
             if (display.isRecycled) return@post
-            var target = displayedBitmap
-            if (target == null || target.isRecycled || target.width != display.width || target.height != display.height) {
-                target = Bitmap.createBitmap(display.width, display.height, Bitmap.Config.ARGB_8888)
-                displayedBitmap?.let { old -> if (!old.isRecycled && old !== display) old.recycle() }
-                displayedBitmap = target
-                outputView.setImageBitmap(target)
-            }
-            val canvas = Canvas(target)
-            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-            canvas.drawBitmap(display, 0f, 0f, null)
+            val previous = displayedBitmap
+            displayedBitmap = display
+            outputView.setImageBitmap(display)
             outputView.invalidate()
-            if (display !== target && !display.isRecycled) display.recycle()
-            if (readyOnce.compareAndSet(false, true)) {
-                onReady(mapOf("ready" to true))
+            if (previous != null && previous !== display) {
+                mainHandler.postDelayed({
+                    if (previous !== displayedBitmap && !previous.isRecycled) previous.recycle()
+                }, 320L)
             }
         }
     }

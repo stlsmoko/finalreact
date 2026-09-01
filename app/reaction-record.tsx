@@ -623,7 +623,6 @@ export default function ReactionRecordScreen() {
                   borderColor: overlayStyle === "cutout" ? "transparent" : isRecording ? "rgba(255, 255, 255, 0.2)" : "rgba(255, 255, 255, 0.6)",
                 },
               ]}
-              needsOffscreenAlphaCompositing={overlayStyle === "cutout"}
             >
               {isFocused && cameraPermission?.granted ? (
                 <>
@@ -799,7 +798,7 @@ const styles = StyleSheet.create({
   recordPill: { alignItems: "center", alignSelf: "center", backgroundColor: "rgba(0, 0, 0, 0.65)", borderColor: "rgba(255, 255, 255, 0.12)", borderRadius: 20, borderWidth: 1, flexDirection: "row", gap: 8, paddingHorizontal: 14, paddingVertical: 6, position: "absolute", top: 16, zIndex: 10 },
   pillDot: { backgroundColor: "#FF3B30", borderRadius: 4, height: 8, width: 8 },
   recordTimerText: { color: "#FFFFFF", fontSize: 13, fontWeight: "600", letterSpacing: 0.2 },
-  bubbleOverlay: { borderWidth: 1.5, elevation: 10, overflow: "hidden", position: "absolute", shadowColor: "#000000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.5, shadowRadius: 16, zIndex: 15 },
+  bubbleOverlay: { borderWidth: 1.5, elevation: 0, overflow: "hidden", position: "absolute", shadowColor: "#000000", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0, shadowRadius: 0, zIndex: 15 },
   cutoutOverlay: { backgroundColor: "transparent", borderWidth: 0, elevation: 0, overflow: "visible", shadowOpacity: 0, shadowRadius: 0 },
   cameraView: { flex: 1, overflow: "hidden" },
   cutoutCamera: { backgroundColor: "transparent", overflow: "visible" },
