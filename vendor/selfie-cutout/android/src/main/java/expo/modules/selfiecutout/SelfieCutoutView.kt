@@ -69,7 +69,9 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         scaleType = ImageView.ScaleType.CENTER_CROP
         setBackgroundColor(Color.TRANSPARENT)
-        setLayerType(LAYER_TYPE_SOFTWARE, null)
+        // Hardware layer keeps an empty ImageView transparent. A software
+        // layer with no bitmap paints as an opaque black rectangle on Android.
+        setLayerType(LAYER_TYPE_HARDWARE, null)
         visibility = View.GONE
         adjustViewBounds = false
     }
@@ -87,9 +89,11 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
 
     init {
         setBackgroundColor(Color.TRANSPARENT)
+        setWillNotDraw(false)
         clipToOutline = false
         clipChildren = false
         clipToPadding = false
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         addView(previewView)
         addView(outputView)
         outputView.scaleX = -1f
@@ -153,22 +157,25 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         val cutout = isolatePerson.get()
         val hasFrame = displayedBitmap != null && displayedBitmap?.isRecycled == false
         previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
-        previewView.visibility = View.VISIBLE
         previewView.translationX = 0f
         previewView.translationY = 0f
         if (cutout && hasFrame) {
-            // Only hide the live camera once the floating head is actually on the ImageView.
-            previewView.alpha = 0.01f
+            // Swap only after a real frame is on the ImageView. GONE avoids a
+            // TextureView/SurfaceView hole-punch that shows as a black square.
+            previewView.alpha = 1f
+            previewView.visibility = View.GONE
             outputView.visibility = View.VISIBLE
             outputView.bringToFront()
-        } else if (cutout) {
-            // Tap Cutout: keep the live camera up so the bubble is never empty.
-            previewView.alpha = 1f
-            outputView.visibility = View.VISIBLE
         } else {
+            // Circle, square, or Cutout-before-first-frame: live camera only.
+            // Never show an empty ImageView — that is the black box.
+            previewView.visibility = View.VISIBLE
             previewView.alpha = 1f
+            previewView.bringToFront()
             outputView.visibility = View.GONE
-            outputView.setImageBitmap(null)
+            if (!cutout) {
+                outputView.setImageBitmap(null)
+            }
         }
         previewView.requestLayout()
         outputView.requestLayout()
@@ -330,12 +337,17 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
             if (display.isRecycled) return@post
             val previous = displayedBitmap
             displayedBitmap = display
-            outputView.visibility = View.VISIBLE
-            outputView.bringToFront()
+            // Switch to software only after we have an ARGB cutout so alpha
+            // punches through to the reel. Do this after setImageBitmap.
             outputView.setImageBitmap(display)
-            outputView.invalidate()
             if (isolatePerson.get()) {
-                previewView.alpha = 0.01f
+                outputView.setLayerType(LAYER_TYPE_SOFTWARE, null)
+                outputView.visibility = View.VISIBLE
+                outputView.bringToFront()
+                outputView.invalidate()
+                previewView.visibility = View.GONE
+            } else {
+                outputView.visibility = View.GONE
             }
             if (previous != null && previous !== display) {
                 mainHandler.postDelayed({
