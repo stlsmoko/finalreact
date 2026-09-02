@@ -123,6 +123,10 @@ export function getOutputOverlay({ overlay, studioSize }: CompositeGeometry) {
   };
 }
 
+function fitReaction(input: string, overlaySize: number, flip: string) {
+  return `${input}${flip}scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=decrease,pad=${overlaySize}:${overlaySize}:(ow-iw)/2:(oh-ih)/2:black@0,setsar=1`;
+}
+
 function buildReactionFilters(
   overlayStyle: NonNullable<CompositeGeometry["overlayStyle"]>,
   overlaySize: number,
@@ -130,12 +134,12 @@ function buildReactionFilters(
   facing: "front" | "back",
 ) {
   const flip = facing === "back" ? "" : "hflip,";
-  const reactionBase = `[1:v]${flip}scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=increase,crop=${overlaySize}:${overlaySize},setsar=1`;
+  const reactionBase = fitReaction("[1:v]", overlaySize, flip);
 
   if (overlayStyle === "circle") {
     return [
       `${reactionBase},format=rgba[reaction_rgba]`,
-      `color=c=black:s=${overlaySize}x${overlaySize},format=gray,geq=lum='if(lte(hypot(X-W/2\\,Y-H/2)\\,W/2-3)\\,255\\,0)'[reaction_alpha]`,
+      `color=c=black:s=${overlaySize}x${overlaySize},format=gray,geq=lum='if(lte(hypot(X-W/2\\,Y-H/2)\\,W/2-1)\\,255\\,0)'[reaction_alpha]`,
       "[reaction_rgba][reaction_alpha]alphamerge[reaction]",
     ];
   }
@@ -146,16 +150,12 @@ function buildReactionFilters(
 
   if (overlayStyle === "cutout" && hasPersonMask) {
     return [
-      `[2:v]${flip}fps=30,setpts=PTS-STARTPTS,scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=decrease,pad=${overlaySize}:${overlaySize}:(ow-iw)/2:(oh-ih)/2:black@0,setsar=1,format=rgba[reaction]`,
+      `${fitReaction("[2:v]", overlaySize, flip).replace("[2:v]", "[2:v]fps=30,setpts=PTS-STARTPTS,")},format=rgba[reaction]`,
     ];
   }
 
   if (overlayStyle === "cutout") {
-    return [
-      `${reactionBase},format=rgba[reaction_rgba]`,
-      `color=c=black:s=${overlaySize}x${overlaySize},format=gray,geq=lum='if(lte(hypot((X-W/2)/(W/2-2)\\,(Y-H*0.46)/(H*0.46-2))\\,1)\\,255\\,0)'[reaction_alpha]`,
-      "[reaction_rgba][reaction_alpha]alphamerge[reaction]",
-    ];
+    return [`${reactionBase},format=rgba[reaction]`];
   }
 
   return [`${reactionBase}[reaction]`];
@@ -171,11 +171,10 @@ export function buildCompositeCommand(
   const hasPersonMask = overlayStyle === "cutout" && Boolean(maskPattern);
   const maskFps = Number.isFinite(request.maskFps) && (request.maskFps as number) > 0
     ? seconds(request.maskFps as number)
-    : "12";
+    : "15";
   const stopDurationSec = Number.isFinite(request.stopDurationSec) && (request.stopDurationSec ?? 0) > 0.05
     ? seconds(request.stopDurationSec as number)
     : null;
-  // sourceAudioGain / reactionAudioGain arrive as 0..1 slider percentages.
   const sourcePercent = Number.isFinite(request.sourceAudioGain)
     ? Math.max(0, Math.min(1, request.sourceAudioGain as number))
     : 0.12;
