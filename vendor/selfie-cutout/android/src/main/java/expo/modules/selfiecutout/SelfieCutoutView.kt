@@ -104,16 +104,15 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
             isolatedView.person = null
             displayedBitmap?.let { if (!it.isRecycled) it.recycle() }
             displayedBitmap = null
-            if (!enabled) {
-                previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
-                previewView.alpha = 1f
-                previewView.visibility = View.VISIBLE
-                if (cameraProvider != null) {
-                    bindAttempts = 0
-                    bindCamera()
-                }
-            }
+            previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+            previewView.alpha = 1f
+            previewView.visibility = View.VISIBLE
+            isolatedView.visibility = View.GONE
             applyPreviewMode()
+            if (!enabled && cameraProvider != null) {
+                bindAttempts = 0
+                bindCamera()
+            }
         }
     }
 
@@ -154,15 +153,15 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     private fun applyPreviewMode() {
         val cutoutReady = isolatePerson.get() && personOnScreen.get() &&
             displayedBitmap != null && displayedBitmap?.isRecycled == false
+        previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         if (cutoutReady) {
+            // Keep PreviewView at full size so CameraX does not lose its surface.
+            // Only hide it visually while the isolated person is drawn on top.
             previewView.alpha = 0f
-            previewView.visibility = View.INVISIBLE
-            previewView.layoutParams = LayoutParams(1, 1)
             isolatedView.visibility = View.VISIBLE
             isolatedView.bringToFront()
             isolatedView.invalidate()
         } else {
-            previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
             previewView.alpha = 1f
             previewView.visibility = View.VISIBLE
             previewView.bringToFront()
