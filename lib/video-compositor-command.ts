@@ -140,8 +140,10 @@ function buildReactionFilters(
   }
 
   if (overlayStyle === "cutout" && hasPersonMask) {
+    // Fit the whole isolated person into the bubble. The old 1.22 cover-zoom
+    // turned the studio shoulders-and-hoodie cutout into a tight face crop.
     return [
-      `[2:v]fps=30,setpts=PTS-STARTPTS,scale=${Math.round(overlaySize * 1.22)}:${Math.round(overlaySize * 1.22)}:force_original_aspect_ratio=increase,crop=${overlaySize}:${overlaySize},setsar=1,format=rgba[reaction]`,
+      `[2:v]fps=30,setpts=PTS-STARTPTS,scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=decrease,pad=${overlaySize}:${overlaySize}:(ow-iw)/2:(oh-ih)/2:black@0,setsar=1,format=rgba[reaction]`,
     ];
   }
 
@@ -169,12 +171,12 @@ export function buildCompositeCommand(
   const stopDurationSec = Number.isFinite(request.stopDurationSec) && (request.stopDurationSec ?? 0) > 0.05
     ? seconds(request.stopDurationSec as number)
     : null;
-  const sourceAudioGain = Number.isFinite(request.sourceAudioGain)
-    ? seconds(Math.max(0, Math.min(1, request.sourceAudioGain as number)))
-    : "0.12";
+  const rawSourceGain = Number.isFinite(request.sourceAudioGain) ? Math.max(0, request.sourceAudioGain as number) : 0.12;
+  // Slider 5% must be background, not competing with the mic. Square the gain so low values drop fast.
+  const sourceAudioGain = seconds(Math.min(0.35, rawSourceGain * rawSourceGain * 8));
   const reactionAudioGain = Number.isFinite(request.reactionAudioGain)
-    ? seconds(Math.max(0, Math.min(6, request.reactionAudioGain as number)))
-    : "3";
+    ? seconds(Math.max(0, Math.min(8, request.reactionAudioGain as number)))
+    : "4";
   const reactionFilters = buildReactionFilters(overlayStyle, overlay.size, hasPersonMask);
   const timelineFilters = stopDurationSec
     ? [
@@ -191,7 +193,7 @@ export function buildCompositeCommand(
     `${backgroundLabel}${reactionLabel}overlay=${overlay.x}:${overlay.y}:eof_action=pass:repeatlast=1:format=auto[video]`,
     `[source_audio]volume=${sourceAudioGain}[source_audio_scaled]`,
     `[1:a]volume=${reactionAudioGain},alimiter=limit=0.89:level=1[reaction_audio]`,
-    `[source_audio_scaled][reaction_audio]amix=inputs=2:weights=1 1:duration=longest:dropout_transition=2:normalize=0,volume=0.36[audio]`,
+    `[source_audio_scaled][reaction_audio]amix=inputs=2:weights=1 6:duration=longest:dropout_transition=2:normalize=0,volume=0.36[audio]`,
   ].join(";");
 
   const args = [
