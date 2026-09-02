@@ -115,8 +115,8 @@ class SelfieCutoutModule : Module() {
                 ?.toLongOrNull()
                 ?.coerceAtLeast(0L)
                 ?: 0L
-            val fps = if (durationMs >= 8_000L) MASK_FPS_LONG else MASK_FPS_SHORT
-            val frameIntervalUs = (1_000_000.0 / fps).toLong().coerceAtLeast(66_000L)
+            val fps = if (durationMs >= 20_000L) MASK_FPS_LONG else MASK_FPS_SHORT
+            val frameIntervalUs = (1_000_000.0 / fps).toLong().coerceAtLeast(40_000L)
             val lastTimeUs = if (durationMs <= 0L) 0L else durationMs * 1_000L
 
             val outputDir = File(context.cacheDir, "reel-reactor-cutout-${System.currentTimeMillis()}")
@@ -133,7 +133,7 @@ class SelfieCutoutModule : Module() {
                 if (frame != null) {
                     val square = PersonCutout.centerCropSquare(frame)
                     if (square !== frame) frame.recycle()
-                    val scaled = PersonCutout.scaleToMax(square, 256)
+                    val scaled = PersonCutout.scaleToMax(square, 224)
                     if (scaled !== square) square.recycle()
                     val working = PersonCutout.asSoftwareArgb(scaled)
                     if (working !== scaled) scaled.recycle()
@@ -161,17 +161,11 @@ class SelfieCutoutModule : Module() {
                 throw IllegalStateException("Cutout did not produce any person frames.")
             }
 
-            val playbackFps = if (durationMs > 250L && frameIndex > 1) {
-                (frameIndex * 1000.0 / durationMs).coerceIn(8.0, 18.0)
-            } else {
-                fps
-            }
-
             lastCutout?.recycle()
             return mapOf(
                 "directory" to "file://${outputDir.absolutePath}",
                 "pattern" to "${outputDir.absolutePath}/cutout_%05d.png",
-                "fps" to playbackFps,
+                "fps" to fps,
                 "frameCount" to frameIndex
             )
         } finally {
@@ -202,11 +196,7 @@ class SelfieCutoutModule : Module() {
     }
 
     private fun getFrame(retriever: MediaMetadataRetriever, timeUs: Long): Bitmap? {
-        return if (Build.VERSION.SDK_INT >= 27) {
-            retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
-        } else {
-            retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
-        }
+        return retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
     }
 
     private fun writePng(bitmap: Bitmap, file: File) {
@@ -219,8 +209,8 @@ class SelfieCutoutModule : Module() {
 
     companion object {
         private const val TAG = "SelfieCutout"
-        private const val MASK_FPS_SHORT = 15.0
-        private const val MASK_FPS_LONG = 12.0
-        private const val MAX_FRAMES = 360
+        private const val MASK_FPS_SHORT = 18.0
+        private const val MASK_FPS_LONG = 15.0
+        private const val MAX_FRAMES = 1800
     }
 }
