@@ -26,13 +26,6 @@ function backgroundChain(input: string, output: string) {
   return `${input}scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1${output}`;
 }
 
-function audioNormalize(input: string, output: string, durationSec?: string) {
-  const pad = durationSec
-    ? `,apad=whole_dur=${durationSec},atrim=start=0:end=${durationSec}`
-    : "";
-  return `${input}aresample=48000:async=1:first_pts=0,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo${pad}${output}`;
-}
-
 function getCoveredRect(
   container: { width: number; height: number },
   sourceSize: { width?: number; height?: number } = {},
@@ -70,7 +63,7 @@ function buildSourceTimelineFilters(pauses: CompositeGeometry["sourcePauses"] = 
   if (validPauses.length === 0) {
     return [
       backgroundChain("[0:v]", "[background]"),
-      audioNormalize("[0:a]", "[source_audio]"),
+      "[0:a]anull[source_audio]",
     ];
   }
 
@@ -91,8 +84,8 @@ function buildSourceTimelineFilters(pauses: CompositeGeometry["sourcePauses"] = 
 
     filters.push(backgroundChain(`[0:v]trim=start=${seconds(sourceStart)}:end=${sourceEnd},setpts=PTS-STARTPTS,`, `[${videoPart}]`));
     filters.push(`[${videoPart}]tpad=stop_mode=clone:stop_duration=${duration},setpts=PTS-STARTPTS[${freezePart}]`);
-    filters.push(audioNormalize(`[0:a]atrim=start=${seconds(sourceStart)}:end=${sourceEnd},asetpts=PTS-STARTPTS,`, `[${audioPart}]`));
-    filters.push(`anullsrc=channel_layout=stereo:sample_rate=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,atrim=duration=${duration},asetpts=PTS-STARTPTS[${silencePart}]`);
+    filters.push(`[0:a]atrim=start=${seconds(sourceStart)}:end=${sourceEnd},asetpts=PTS-STARTPTS[${audioPart}]`);
+    filters.push(`anullsrc=r=44100:cl=stereo,atrim=duration=${duration},asetpts=PTS-STARTPTS[${silencePart}]`);
     videoParts.push(`[${freezePart}]`);
     audioParts.push(`[${audioPart}]`, `[${silencePart}]`);
     sourceStart = pause.sourceTimeSec;
@@ -102,7 +95,7 @@ function buildSourceTimelineFilters(pauses: CompositeGeometry["sourcePauses"] = 
   const tailVideo = "source_video_tail";
   const tailAudio = "source_audio_tail";
   filters.push(backgroundChain(`[0:v]trim=start=${seconds(sourceStart)},setpts=PTS-STARTPTS,`, `[${tailVideo}]`));
-  filters.push(audioNormalize(`[0:a]atrim=start=${seconds(sourceStart)},asetpts=PTS-STARTPTS,`, `[${tailAudio}]`));
+  filters.push(`[0:a]atrim=start=${seconds(sourceStart)},asetpts=PTS-STARTPTS[${tailAudio}]`);
   videoParts.push(`[${tailVideo}]`);
   audioParts.push(`[${tailAudio}]`);
   filters.push(`${videoParts.join("")}concat=n=${videoParts.length}:v=1:a=0[background]`);
@@ -186,22 +179,14 @@ export function buildCompositeCommand(
     : [];
   const backgroundLabel = stopDurationSec ? "[background_trimmed]" : "[background]";
   const reactionLabel = stopDurationSec ? "[reaction_trimmed]" : "[reaction]";
-  const sourceAudioInput = stopDurationSec
-    ? audioNormalize("[source_audio]", "[source_audio_ready]", stopDurationSec)
-    : "[source_audio]anull[source_audio_ready]";
-  const reactionAudioInput = stopDurationSec
-    ? audioNormalize("[1:a]", "[reaction_audio_ready]", stopDurationSec)
-    : audioNormalize("[1:a]", "[reaction_audio_ready]");
   const filter = [
     ...buildSourceTimelineFilters(request.sourcePauses),
     ...reactionFilters,
     ...timelineFilters,
     `${backgroundLabel}${reactionLabel}overlay=${overlay.x}:${overlay.y}:eof_action=pass:repeatlast=1:format=auto[video]`,
-    sourceAudioInput,
-    reactionAudioInput,
-    `[source_audio_ready]volume=${sourceAudioGain}[source_audio_scaled]`,
-    `[reaction_audio_ready]volume=${reactionAudioGain}[reaction_audio]`,
-    `[source_audio_scaled][reaction_audio]amix=inputs=2:weights=1 12:duration=longest:dropout_transition=0.2:normalize=0[audio]`,
+    `[source_audio]volume=${sourceAudioGain}[source_audio_scaled]`,
+    `[1:a]volume=${reactionAudioGain}[reaction_audio]`,
+    `[source_audio_scaled][reaction_audio]amix=inputs=2:weights=1 12:duration=longest:dropout_transition=2:normalize=0[audio]`,
   ].join(";");
 
   const args = [
@@ -221,8 +206,7 @@ export function buildCompositeCommand(
     "-pix_fmt", "yuv420p",
     "-movflags", "+faststart",
     "-c:a", "aac",
-    "-ar", "48000",
-    "-ac", "2",
+    "-b:a", "192k",
     ...(stopDurationSec ? ["-t", stopDurationSec] : ["-shortest"]),
     request.outputPath,
   ];
