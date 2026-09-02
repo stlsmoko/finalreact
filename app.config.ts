@@ -32,7 +32,7 @@ const env = {
 const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
-  version: "1.0.55",
+  version: "1.0.56",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -53,7 +53,7 @@ const config: ExpoConfig = {
     },
     predictiveBackGestureEnabled: false,
     package: androidPackage,
-    versionCode: 56,
+    versionCode: 57,
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [
       {
