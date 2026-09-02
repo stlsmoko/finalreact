@@ -2,38 +2,27 @@
 import "./scripts/load-env.js";
 import type { ExpoConfig } from "expo/config";
 
-// Bundle ID format: space.manus.<project_name_dots>.<timestamp>
-// e.g., "my-app" created at 2024-01-15 10:30:45 -> "space.manus.my.app.t20240115103045"
-// Bundle ID can only contain letters, numbers, and dots
-// Android requires each dot-separated segment to start with a letter
 const rawBundleId = "com.app.reelreactor";
 const bundleId =
   rawBundleId
-    .replace(/[-_]/g, ".") // Replace hyphens/underscores with dots
-    .replace(/[^a-zA-Z0-9.]/g, "") // Remove invalid chars
-    .replace(/\.+/g, ".") // Collapse consecutive dots
-    .replace(/^\.+|\.+$/g, "") // Trim leading/trailing dots
+    .replace(/[-_]/g, ".")
+    .replace(/[^a-zA-Z0-9.]/g, "")
+    .replace(/\.+/g, ".")
+    .replace(/^\.+|\.+$/g, "")
     .toLowerCase()
     .split(".")
     .map((segment) => {
-      // Android requires each segment to start with a letter
-      // Prefix with 'x' if segment starts with a digit
       return /^[a-zA-Z]/.test(segment) ? segment : "x" + segment;
     })
     .join(".") || "space.manus.app";
-// Extract timestamp from bundle ID and prefix with "manus" for deep link scheme
-// e.g., "space.manus.my.app.t20240115103045" -> "manus20240115103045"
 const timestamp = bundleId.split(".").pop()?.replace(/^t/, "") ?? "";
 const schemeFromBundleId = `manus${timestamp}`;
 const isSideBySideDebugBuild = process.env.REEL_REACTOR_SIDE_BY_SIDE === "1";
 const androidPackage = isSideBySideDebugBuild ? `${bundleId}.test` : bundleId;
 
 const env = {
-  // App branding - update these values directly (do not use env vars)
   appName: isSideBySideDebugBuild ? "Reel Reactor Test" : "Reel Reactor",
   appSlug: "reel-reactor",
-  // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
-  // Leave empty to use the default icon from assets/images/icon.png
   logoUrl: "/manus-storage/reel-reactor-icon_4113e11e.png",
   scheme: isSideBySideDebugBuild ? `${schemeFromBundleId}test` : schemeFromBundleId,
   iosBundleId: bundleId,
@@ -43,7 +32,7 @@ const env = {
 const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
-  version: "1.0.48",
+  version: "1.0.49",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -51,9 +40,9 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+    infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
+    },
   },
   android: {
     adaptiveIcon: {
@@ -64,7 +53,7 @@ const config: ExpoConfig = {
     },
     predictiveBackGestureEnabled: false,
     package: androidPackage,
-    versionCode: 49,
+    versionCode: 50,
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [
       {
@@ -109,23 +98,23 @@ const config: ExpoConfig = {
     [
       "expo-camera",
       {
-        "cameraPermission": "Allow $(PRODUCT_NAME) to use your camera for reaction videos.",
-        "microphonePermission": "Allow $(PRODUCT_NAME) to use your microphone for reaction videos.",
-        "recordAudioAndroid": true,
+        cameraPermission: "Allow $(PRODUCT_NAME) to use your camera for reaction videos.",
+        microphonePermission: "Allow $(PRODUCT_NAME) to use your microphone for reaction videos.",
+        recordAudioAndroid: true,
       },
     ],
     [
       "expo-image-picker",
       {
-        "photosPermission": "Allow $(PRODUCT_NAME) to choose a source video for your reaction.",
+        photosPermission: "Allow $(PRODUCT_NAME) to choose a source video for your reaction.",
       },
     ],
     [
       "expo-media-library",
       {
-        "photosPermission": "Allow $(PRODUCT_NAME) to access your videos.",
-        "savePhotosPermission": "Allow $(PRODUCT_NAME) to save your reaction takes.",
-        "granularPermissions": ["video"],
+        photosPermission: "Allow $(PRODUCT_NAME) to access your videos.",
+        savePhotosPermission: "Allow $(PRODUCT_NAME) to save your reaction takes.",
+        granularPermissions: ["video"],
       },
     ],
     [
