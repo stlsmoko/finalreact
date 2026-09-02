@@ -23,9 +23,14 @@ function seconds(value: number) {
 }
 
 function backgroundChain(input: string, output: string) {
-  // Studio VideoView uses contentFit="cover". Export must crop-fill the same way
-  // or the finished reel letterboxes and the floating head sits on a different frame.
   return `${input}scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1${output}`;
+}
+
+function audioNormalize(input: string, output: string, durationSec?: string) {
+  const pad = durationSec
+    ? `,apad=whole_dur=${durationSec},atrim=start=0:end=${durationSec}`
+    : "";
+  return `${input}aresample=48000:async=1:first_pts=0,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo${pad}${output}`;
 }
 
 function getCoveredRect(
@@ -65,7 +70,7 @@ function buildSourceTimelineFilters(pauses: CompositeGeometry["sourcePauses"] = 
   if (validPauses.length === 0) {
     return [
       backgroundChain("[0:v]", "[background]"),
-      "[0:a]aresample=48000[source_audio]",
+      audioNormalize("[0:a]", "[source_audio]"),
     ];
   }
 
@@ -86,8 +91,8 @@ function buildSourceTimelineFilters(pauses: CompositeGeometry["sourcePauses"] = 
 
     filters.push(backgroundChain(`[0:v]trim=start=${seconds(sourceStart)}:end=${sourceEnd},setpts=PTS-STARTPTS,`, `[${videoPart}]`));
     filters.push(`[${videoPart}]tpad=stop_mode=clone:stop_duration=${duration},setpts=PTS-STARTPTS[${freezePart}]`);
-    filters.push(`[0:a]atrim=start=${seconds(sourceStart)}:end=${sourceEnd},asetpts=PTS-STARTPTS,aresample=48000[${audioPart}]`);
-    filters.push(`anullsrc=channel_layout=stereo:sample_rate=48000,atrim=duration=${duration},asetpts=PTS-STARTPTS[${silencePart}]`);
+    filters.push(audioNormalize(`[0:a]atrim=start=${seconds(sourceStart)}:end=${sourceEnd},asetpts=PTS-STARTPTS,`, `[${audioPart}]`));
+    filters.push(`anullsrc=channel_layout=stereo:sample_rate=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,atrim=duration=${duration},asetpts=PTS-STARTPTS[${silencePart}]`);
     videoParts.push(`[${freezePart}]`);
     audioParts.push(`[${audioPart}]`, `[${silencePart}]`);
     sourceStart = pause.sourceTimeSec;
@@ -97,7 +102,7 @@ function buildSourceTimelineFilters(pauses: CompositeGeometry["sourcePauses"] = 
   const tailVideo = "source_video_tail";
   const tailAudio = "source_audio_tail";
   filters.push(backgroundChain(`[0:v]trim=start=${seconds(sourceStart)},setpts=PTS-STARTPTS,`, `[${tailVideo}]`));
-  filters.push(`[0:a]atrim=start=${seconds(sourceStart)},asetpts=PTS-STARTPTS,aresample=48000[${tailAudio}]`);
+  filters.push(audioNormalize(`[0:a]atrim=start=${seconds(sourceStart)},asetpts=PTS-STARTPTS,`, `[${tailAudio}]`));
   videoParts.push(`[${tailVideo}]`);
   audioParts.push(`[${tailAudio}]`);
   filters.push(`${videoParts.join("")}concat=n=${videoParts.length}:v=1:a=0[background]`);
@@ -137,8 +142,6 @@ function buildReactionFilters(
   }
 
   if (overlayStyle === "cutout" && hasPersonMask) {
-    // Live preview is a tighter square from ImageAnalysis. Recorded camera frames are wider,
-    // so zoom the mask slightly before cover-cropping to keep the same head framing.
     return [
       `[2:v]fps=30,setpts=PTS-STARTPTS,scale=${Math.round(overlaySize * 1.22)}:${Math.round(overlaySize * 1.22)}:force_original_aspect_ratio=increase,crop=${overlaySize}:${overlaySize},setsar=1,format=rgba[reaction]`,
     ];
@@ -179,24 +182,26 @@ export function buildCompositeCommand(
     ? [
         `[background]tpad=stop=-1:stop_mode=clone,trim=duration=${stopDurationSec},setpts=PTS-STARTPTS[background_trimmed]`,
         `[reaction]tpad=stop=-1:stop_mode=clone,trim=duration=${stopDurationSec},setpts=PTS-STARTPTS[reaction_trimmed]`,
-        `[source_audio]apad,atrim=duration=${stopDurationSec},asetpts=PTS-STARTPTS[source_audio_trimmed]`,
       ]
     : [];
   const backgroundLabel = stopDurationSec ? "[background_trimmed]" : "[background]";
   const reactionLabel = stopDurationSec ? "[reaction_trimmed]" : "[reaction]";
-  const sourceAudioLabel = stopDurationSec ? "[source_audio_trimmed]" : "[source_audio]";
-  const reactionAudioPrefix = stopDurationSec ? `[1:a]apad,atrim=duration=${stopDurationSec},` : "[1:a]";
-  const overlayEofAction = "pass";
-  const overlayRepeatLast = 1;
-  const mixDuration = stopDurationSec ? "longest" : "shortest";
+  const sourceAudioInput = stopDurationSec
+    ? audioNormalize("[source_audio]", "[source_audio_ready]", stopDurationSec)
+    : "[source_audio]anull[source_audio_ready]";
+  const reactionAudioInput = stopDurationSec
+    ? audioNormalize("[1:a]", "[reaction_audio_ready]", stopDurationSec)
+    : audioNormalize("[1:a]", "[reaction_audio_ready]");
   const filter = [
     ...buildSourceTimelineFilters(request.sourcePauses),
     ...reactionFilters,
     ...timelineFilters,
-    `${backgroundLabel}${reactionLabel}overlay=${overlay.x}:${overlay.y}:eof_action=${overlayEofAction}:repeatlast=${overlayRepeatLast}:format=auto[video]`,
-    `${sourceAudioLabel}volume=${sourceAudioGain}[source_audio_scaled]`,
-    `${reactionAudioPrefix}aresample=48000,asetpts=PTS-STARTPTS,volume=${reactionAudioGain},alimiter=limit=0.95[reaction_audio]`,
-    `[source_audio_scaled][reaction_audio]amix=inputs=2:weights=1 12:duration=${mixDuration}:dropout_transition=0:normalize=0,alimiter=limit=0.96[audio]`,
+    `${backgroundLabel}${reactionLabel}overlay=${overlay.x}:${overlay.y}:eof_action=pass:repeatlast=1:format=auto[video]`,
+    sourceAudioInput,
+    reactionAudioInput,
+    `[source_audio_ready]volume=${sourceAudioGain}[source_audio_scaled]`,
+    `[reaction_audio_ready]volume=${reactionAudioGain}[reaction_audio]`,
+    `[source_audio_scaled][reaction_audio]amix=inputs=2:weights=1 12:duration=longest:dropout_transition=0.2:normalize=0[audio]`,
   ].join(";");
 
   const args = [
@@ -216,6 +221,8 @@ export function buildCompositeCommand(
     "-pix_fmt", "yuv420p",
     "-movflags", "+faststart",
     "-c:a", "aac",
+    "-ar", "48000",
+    "-ac", "2",
     ...(stopDurationSec ? ["-t", stopDurationSec] : ["-shortest"]),
     request.outputPath,
   ];
