@@ -26,18 +26,6 @@ function backgroundChain(input: string, output: string) {
   return `${input}scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1${output}`;
 }
 
-function getCoveredRect(
-  container: { width: number; height: number },
-  sourceSize: { width?: number; height?: number } = {},
-) {
-  const sourceWidth = sourceSize.width && sourceSize.width > 0 ? sourceSize.width : OUTPUT_WIDTH;
-  const sourceHeight = sourceSize.height && sourceSize.height > 0 ? sourceSize.height : OUTPUT_HEIGHT;
-  const scale = Math.max(container.width / sourceWidth, container.height / sourceHeight);
-  const width = sourceWidth * scale;
-  const height = sourceHeight * scale;
-  return { x: (container.width - width) / 2, y: (container.height - height) / 2, width, height };
-}
-
 export function normalizeSourcePauses(pauses: CompositeGeometry["sourcePauses"] = []) {
   const normalized: { sourceTimeSec: number; durationSec: number }[] = [];
   for (const pause of pauses) {
@@ -103,15 +91,18 @@ function buildSourceTimelineFilters(pauses: CompositeGeometry["sourcePauses"] = 
   return filters;
 }
 
-export function getOutputOverlay({ overlay, studioSize, sourceSize }: CompositeGeometry) {
-  const studioVideo = getCoveredRect(studioSize, sourceSize);
-  const outputVideo = getCoveredRect({ width: OUTPUT_WIDTH, height: OUTPUT_HEIGHT }, sourceSize);
-  const scale = outputVideo.width / studioVideo.width;
+export function getOutputOverlay({ overlay, studioSize }: CompositeGeometry) {
+  const stageWidth = Math.max(1, studioSize.width);
+  const stageHeight = Math.max(1, studioSize.height);
+  const scaleX = OUTPUT_WIDTH / stageWidth;
+  const scaleY = OUTPUT_HEIGHT / stageHeight;
+  const maxX = Math.max(0, OUTPUT_WIDTH - 80);
+  const maxY = Math.max(0, OUTPUT_HEIGHT - 80);
 
   return {
-    x: Math.max(0, Math.round(outputVideo.x + (overlay.x - studioVideo.x) * scale)),
-    y: Math.max(0, Math.round(outputVideo.y + (overlay.y - studioVideo.y) * scale)),
-    size: Math.max(80, Math.round(overlay.size * scale)),
+    x: Math.max(0, Math.min(maxX, Math.round(overlay.x * scaleX))),
+    y: Math.max(0, Math.min(maxY, Math.round(overlay.y * scaleY))),
+    size: Math.max(80, Math.round(overlay.size * scaleX)),
   };
 }
 
@@ -164,11 +155,9 @@ export function buildCompositeCommand(
   const stopDurationSec = Number.isFinite(request.stopDurationSec) && (request.stopDurationSec ?? 0) > 0.05
     ? seconds(request.stopDurationSec as number)
     : null;
-  // Reel audio: volume only. Do not resample/pad/limit this track.
   const sourceAudioGain = Number.isFinite(request.sourceAudioGain)
     ? seconds(Math.max(0, Math.min(1, request.sourceAudioGain as number)))
     : "0.12";
-  // Voice: modest boost + limiter. Old 28x gain with no limiter destroyed the mic.
   const reactionAudioGain = Number.isFinite(request.reactionAudioGain)
     ? seconds(Math.max(0, Math.min(6, request.reactionAudioGain as number)))
     : "3";
