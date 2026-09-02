@@ -8,7 +8,9 @@ export type CompositeGeometry = {
   maskFps?: number;
   sourcePauses?: { sourceTimeSec: number; durationSec: number }[];
   stopDurationSec?: number;
+  /** Reel Clip Volume slider as 0..1 (0 = muted, 1 = 100%). */
   sourceAudioGain?: number;
+  /** Reaction Voice slider as 0..1 (0 = muted, 1 = 100%). */
   reactionAudioGain?: number;
 };
 
@@ -173,11 +175,15 @@ export function buildCompositeCommand(
   const stopDurationSec = Number.isFinite(request.stopDurationSec) && (request.stopDurationSec ?? 0) > 0.05
     ? seconds(request.stopDurationSec as number)
     : null;
-  const rawSourceGain = Number.isFinite(request.sourceAudioGain) ? Math.max(0, request.sourceAudioGain as number) : 0.12;
-  const sourceAudioGain = seconds(Math.min(0.35, rawSourceGain * rawSourceGain * 8));
-  const reactionAudioGain = Number.isFinite(request.reactionAudioGain)
-    ? seconds(Math.max(0, Math.min(8, request.reactionAudioGain as number)))
-    : "4";
+  // sourceAudioGain / reactionAudioGain arrive as 0..1 slider percentages.
+  const sourcePercent = Number.isFinite(request.sourceAudioGain)
+    ? Math.max(0, Math.min(1, request.sourceAudioGain as number))
+    : 0.12;
+  const sourceAudioGain = seconds(sourcePercent * 0.45);
+  const reactionPercent = Number.isFinite(request.reactionAudioGain)
+    ? Math.max(0, Math.min(1, request.reactionAudioGain as number))
+    : 0.6;
+  const reactionAudioGain = seconds(1 + reactionPercent * 7);
   const reactionFilters = buildReactionFilters(overlayStyle, overlay.size, hasPersonMask, facing);
   const timelineFilters = stopDurationSec
     ? [
@@ -193,8 +199,9 @@ export function buildCompositeCommand(
     ...timelineFilters,
     `${backgroundLabel}${reactionLabel}overlay=${overlay.x}:${overlay.y}:eof_action=pass:repeatlast=1:format=auto[video]`,
     `[source_audio]volume=${sourceAudioGain}[source_audio_scaled]`,
-    `[1:a]volume=${reactionAudioGain},alimiter=limit=0.89:level=1[reaction_audio]`,
-    `[source_audio_scaled][reaction_audio]amix=inputs=2:weights=1 6:duration=longest:dropout_transition=2:normalize=0,volume=0.36[audio]`,
+    `[1:a]volume=${reactionAudioGain},alimiter=limit=0.95:level=1[reaction_audio]`,
+    `[source_audio_scaled][reaction_audio]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0[audio_mixed]`,
+    `[audio_mixed]alimiter=limit=0.95:level=1[audio]`,
   ].join(";");
 
   const args = [
