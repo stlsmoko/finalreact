@@ -3,7 +3,6 @@ package expo.modules.selfiecutout
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.os.Build
 import android.util.Log
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
@@ -131,10 +130,8 @@ class SelfieCutoutModule : Module() {
             while (timeUs <= lastTimeUs || frameIndex == 0) {
                 val frame = getFrame(retriever, timeUs)
                 if (frame != null) {
-                    val square = PersonCutout.centerCropSquare(frame)
-                    if (square !== frame) frame.recycle()
-                    val scaled = PersonCutout.scaleToMax(square, 224)
-                    if (scaled !== square) square.recycle()
+                    val scaled = PersonCutout.scaleToMax(frame, 224)
+                    if (scaled !== frame) frame.recycle()
                     val working = PersonCutout.asSoftwareArgb(scaled)
                     if (working !== scaled) scaled.recycle()
                     val image = InputImage.fromBitmap(working, 0)
