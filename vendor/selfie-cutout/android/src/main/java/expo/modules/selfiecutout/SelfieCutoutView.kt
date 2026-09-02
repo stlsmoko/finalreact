@@ -104,6 +104,15 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
             isolatedView.person = null
             displayedBitmap?.let { if (!it.isRecycled) it.recycle() }
             displayedBitmap = null
+            if (!enabled) {
+                previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+                previewView.alpha = 1f
+                previewView.visibility = View.VISIBLE
+                if (cameraProvider != null) {
+                    bindAttempts = 0
+                    bindCamera()
+                }
+            }
             applyPreviewMode()
         }
     }
@@ -146,8 +155,6 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         val cutoutReady = isolatePerson.get() && personOnScreen.get() &&
             displayedBitmap != null && displayedBitmap?.isRecycled == false
         if (cutoutReady) {
-            // TextureView preview punches a hole through the reel. Hide it once the
-            // isolated person bitmap is ready so the studio can see the floating head.
             previewView.alpha = 0f
             previewView.visibility = View.INVISIBLE
             previewView.layoutParams = LayoutParams(1, 1)
