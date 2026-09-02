@@ -3,6 +3,7 @@ export type CompositeGeometry = {
   studioSize: { width: number; height: number };
   sourceSize?: { width?: number; height?: number };
   overlayStyle?: "circle" | "square" | "green-screen" | "cutout";
+  facing?: "front" | "back";
   maskPattern?: string;
   maskFps?: number;
   sourcePauses?: { sourceTimeSec: number; durationSec: number }[];
@@ -124,8 +125,10 @@ function buildReactionFilters(
   overlayStyle: NonNullable<CompositeGeometry["overlayStyle"]>,
   overlaySize: number,
   hasPersonMask: boolean,
+  facing: "front" | "back",
 ) {
-  const reactionBase = `[1:v]scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=increase,crop=${overlaySize}:${overlaySize},setsar=1`;
+  const flip = facing === "back" ? "" : "hflip,";
+  const reactionBase = `[1:v]${flip}scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=increase,crop=${overlaySize}:${overlaySize},setsar=1`;
 
   if (overlayStyle === "circle") {
     return [
@@ -140,10 +143,8 @@ function buildReactionFilters(
   }
 
   if (overlayStyle === "cutout" && hasPersonMask) {
-    // Fit the whole isolated person into the bubble. The old 1.22 cover-zoom
-    // turned the studio shoulders-and-hoodie cutout into a tight face crop.
     return [
-      `[2:v]fps=30,setpts=PTS-STARTPTS,scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=decrease,pad=${overlaySize}:${overlaySize}:(ow-iw)/2:(oh-ih)/2:black@0,setsar=1,format=rgba[reaction]`,
+      `[2:v]${flip}fps=30,setpts=PTS-STARTPTS,scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=decrease,pad=${overlaySize}:${overlaySize}:(ow-iw)/2:(oh-ih)/2:black@0,setsar=1,format=rgba[reaction]`,
     ];
   }
 
@@ -163,6 +164,7 @@ export function buildCompositeCommand(
 ) {
   const overlay = getOutputOverlay(request);
   const overlayStyle = request.overlayStyle ?? "circle";
+  const facing = request.facing === "back" ? "back" : "front";
   const maskPattern = request.maskPattern?.trim();
   const hasPersonMask = overlayStyle === "cutout" && Boolean(maskPattern);
   const maskFps = Number.isFinite(request.maskFps) && (request.maskFps as number) > 0
@@ -172,12 +174,11 @@ export function buildCompositeCommand(
     ? seconds(request.stopDurationSec as number)
     : null;
   const rawSourceGain = Number.isFinite(request.sourceAudioGain) ? Math.max(0, request.sourceAudioGain as number) : 0.12;
-  // Slider 5% must be background, not competing with the mic. Square the gain so low values drop fast.
   const sourceAudioGain = seconds(Math.min(0.35, rawSourceGain * rawSourceGain * 8));
   const reactionAudioGain = Number.isFinite(request.reactionAudioGain)
     ? seconds(Math.max(0, Math.min(8, request.reactionAudioGain as number)))
     : "4";
-  const reactionFilters = buildReactionFilters(overlayStyle, overlay.size, hasPersonMask);
+  const reactionFilters = buildReactionFilters(overlayStyle, overlay.size, hasPersonMask, facing);
   const timelineFilters = stopDurationSec
     ? [
         `[background]tpad=stop=-1:stop_mode=clone,trim=duration=${stopDurationSec},setpts=PTS-STARTPTS[background_trimmed]`,
