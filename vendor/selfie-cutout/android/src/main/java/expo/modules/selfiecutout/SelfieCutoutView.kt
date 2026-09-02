@@ -55,6 +55,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     private val analyzingSince = AtomicLong(0)
     private val lastAnalyzeAt = AtomicLong(0)
     private val personOnScreen = AtomicBoolean(false)
+    private val pendingShow = AtomicBoolean(false)
 
     private val previewView = PreviewView(context).apply {
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
@@ -84,7 +85,6 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         clipToOutline = false
         clipChildren = false
         clipToPadding = false
-        setLayerType(LAYER_TYPE_SOFTWARE, null)
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         addView(previewView)
         addView(isolatedView)
@@ -155,8 +155,6 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
             displayedBitmap != null && displayedBitmap?.isRecycled == false
         previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         if (cutoutReady) {
-            // Keep PreviewView at full size so CameraX does not lose its surface.
-            // Only hide it visually while the isolated person is drawn on top.
             previewView.alpha = 0f
             isolatedView.visibility = View.VISIBLE
             isolatedView.bringToFront()
@@ -167,10 +165,6 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
             previewView.bringToFront()
             isolatedView.visibility = View.GONE
         }
-        previewView.requestLayout()
-        isolatedView.requestLayout()
-        requestLayout()
-        invalidate()
     }
 
     private fun startProvider() {
@@ -200,7 +194,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         val analysis = ImageAnalysis.Builder()
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-            .setTargetResolution(Size(320, 320))
+            .setTargetResolution(Size(240, 240))
             .build()
             .also { useCase ->
                 useCase.setAnalyzer(analysisExecutor, ::analyzeFrame)
@@ -258,10 +252,10 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
             return
         }
         val now = SystemClock.uptimeMillis()
-        if (analyzing.get() && now - analyzingSince.get() > 900L) {
+        if (analyzing.get() && now - analyzingSince.get() > 700L) {
             analyzing.set(false)
         }
-        if (now - lastAnalyzeAt.get() < 50L || !analyzing.compareAndSet(false, true)) {
+        if (now - lastAnalyzeAt.get() < 66L || !analyzing.compareAndSet(false, true)) {
             imageProxy.close()
             return
         }
@@ -283,7 +277,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         if (bitmap !== raw) raw.recycle()
         val square = PersonCutout.centerCropSquare(bitmap)
         if (square !== bitmap) bitmap.recycle()
-        val scaled = PersonCutout.scaleToMax(square, 288)
+        val scaled = PersonCutout.scaleToMax(square, 192)
         if (scaled !== square) square.recycle()
         val working = PersonCutout.asSoftwareArgb(scaled)
         if (working !== scaled) scaled.recycle()
@@ -322,20 +316,24 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
     }
 
     private fun showIsolatedBitmap(display: Bitmap) {
+        if (!pendingShow.compareAndSet(false, true)) {
+            if (!display.isRecycled) display.recycle()
+            return
+        }
         mainHandler.post {
+            pendingShow.set(false)
             if (display.isRecycled || !isolatePerson.get()) {
                 if (!display.isRecycled) display.recycle()
                 return@post
             }
             val previous = displayedBitmap
             displayedBitmap = display
+            val firstFrame = !personOnScreen.get()
             personOnScreen.set(true)
             isolatedView.person = display
-            applyPreviewMode()
-            if (previous != null && previous !== display) {
-                mainHandler.postDelayed({
-                    if (previous !== displayedBitmap && !previous.isRecycled) previous.recycle()
-                }, 320L)
+            if (firstFrame) applyPreviewMode() else isolatedView.invalidate()
+            if (previous != null && previous !== display && !previous.isRecycled) {
+                previous.recycle()
             }
         }
     }
