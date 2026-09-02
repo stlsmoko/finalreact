@@ -9,6 +9,7 @@ export type CompositeRequest = {
   studioSize: { width: number; height: number };
   sourceSize?: { width?: number; height?: number };
   overlayStyle?: "circle" | "square" | "green-screen" | "cutout";
+  facing?: "front" | "back";
   sourcePauses?: { sourceTimeSec: number; durationSec: number }[];
   stopDurationSec?: number;
   sourceAudioGain?: number;
@@ -88,6 +89,7 @@ export async function composeReactionVideo(request: CompositeRequest) {
   const personMask = request.overlayStyle === "cutout" ? await createCutoutMask(reactionPath) : null;
   const command = buildCompositeCommand({
     ...request,
+    facing: request.facing === "back" ? "back" : "front",
     sourcePath,
     reactionPath,
     outputPath,
