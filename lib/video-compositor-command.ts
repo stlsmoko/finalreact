@@ -191,7 +191,7 @@ export function buildCompositeCommand(
     `${backgroundLabel}${reactionLabel}overlay=${overlay.x}:${overlay.y}:eof_action=pass:repeatlast=1:format=auto[video]`,
     `[source_audio]volume=${sourceAudioGain}[source_audio_scaled]`,
     `[1:a]volume=${reactionAudioGain},alimiter=limit=0.89:level=1[reaction_audio]`,
-    `[source_audio_scaled][reaction_audio]amix=inputs=2:weights=1 1:duration=longest:dropout_transition=2:normalize=0[audio]`,
+    `[source_audio_scaled][reaction_audio]amix=inputs=2:weights=1 1:duration=longest:dropout_transition=2:normalize=0,volume=0.36[audio]`,
   ].join(";");
 
   const args = [
