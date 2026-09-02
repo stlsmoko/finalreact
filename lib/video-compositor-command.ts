@@ -164,12 +164,14 @@ export function buildCompositeCommand(
   const stopDurationSec = Number.isFinite(request.stopDurationSec) && (request.stopDurationSec ?? 0) > 0.05
     ? seconds(request.stopDurationSec as number)
     : null;
+  // Reel audio: volume only. Do not resample/pad/limit this track.
   const sourceAudioGain = Number.isFinite(request.sourceAudioGain)
-    ? seconds(Math.max(0, Math.min(0.4, request.sourceAudioGain as number)))
-    : "0.04";
+    ? seconds(Math.max(0, Math.min(1, request.sourceAudioGain as number)))
+    : "0.12";
+  // Voice: modest boost + limiter. Old 28x gain with no limiter destroyed the mic.
   const reactionAudioGain = Number.isFinite(request.reactionAudioGain)
-    ? seconds(Math.max(0, Math.min(40, request.reactionAudioGain as number)))
-    : "28";
+    ? seconds(Math.max(0, Math.min(6, request.reactionAudioGain as number)))
+    : "3";
   const reactionFilters = buildReactionFilters(overlayStyle, overlay.size, hasPersonMask);
   const timelineFilters = stopDurationSec
     ? [
@@ -185,8 +187,8 @@ export function buildCompositeCommand(
     ...timelineFilters,
     `${backgroundLabel}${reactionLabel}overlay=${overlay.x}:${overlay.y}:eof_action=pass:repeatlast=1:format=auto[video]`,
     `[source_audio]volume=${sourceAudioGain}[source_audio_scaled]`,
-    `[1:a]volume=${reactionAudioGain}[reaction_audio]`,
-    `[source_audio_scaled][reaction_audio]amix=inputs=2:weights=1 12:duration=longest:dropout_transition=2:normalize=0[audio]`,
+    `[1:a]volume=${reactionAudioGain},alimiter=limit=0.89:level=1[reaction_audio]`,
+    `[source_audio_scaled][reaction_audio]amix=inputs=2:weights=1 1:duration=longest:dropout_transition=2:normalize=0[audio]`,
   ].join(";");
 
   const args = [
