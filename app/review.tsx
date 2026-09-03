@@ -49,7 +49,7 @@ export default function ReviewScreen() {
     }
     setIsSaving(true);
     try {
-      const MediaLibrary = await import("expo-media-library");
+      const MediaLibrary = await import("expo-media-library/legacy");
       const permission = await MediaLibrary.requestPermissionsAsync();
       if (!permission.granted) {
         Alert.alert("Permission needed", "Allow Photos / Gallery access so Reel Reactor can save this video.");
@@ -68,11 +68,7 @@ export default function ReviewScreen() {
       } catch {
         // Original cache file is fine if the copy is unnecessary.
       }
-      if (typeof MediaLibrary.createAssetAsync === "function") {
-        await MediaLibrary.createAssetAsync(localUri);
-      } else {
-        await MediaLibrary.saveToLibraryAsync(localUri);
-      }
+      await MediaLibrary.saveToLibraryAsync(localUri);
       Alert.alert("Saved", "Your reaction is in Photos / Gallery.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "The gallery could not import this video.";
