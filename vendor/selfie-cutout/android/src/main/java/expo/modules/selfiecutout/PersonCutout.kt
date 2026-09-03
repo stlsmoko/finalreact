@@ -79,7 +79,6 @@ internal object PersonCutout {
         val pixels = IntArray(width * height)
         out.getPixels(pixels, 0, width, 0, 0, width, height)
 
-        var personPixels = 0
         for (y in 0 until height) {
             val maskY = (y * safeMaskHeight) / height
             val maskRow = maskY * safeMaskWidth
@@ -93,14 +92,8 @@ internal object PersonCutout {
                     confidence < 0.62f -> ((confidence - 0.22f) / 0.40f * 255f).toInt().coerceIn(0, 255)
                     else -> 255
                 }
-                if (alpha > 16) personPixels += 1
                 pixels[row + x] = (alpha shl 24) or (color and 0x00FFFFFF)
             }
-        }
-
-        // If ML Kit didn't see a person, keep the original frame so the bubble is never an empty hole.
-        if (personPixels < (width * height) / 80) {
-            return out
         }
 
         out.setPixels(pixels, 0, width, 0, 0, width, height)

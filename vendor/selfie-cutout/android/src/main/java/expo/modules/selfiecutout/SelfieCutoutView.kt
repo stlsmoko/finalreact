@@ -105,7 +105,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
             isolatedView.person = null
             displayedBitmap?.let { if (!it.isRecycled) it.recycle() }
             displayedBitmap = null
-            showLivePreview()
+            applyIsolationVisuals()
         }
     }
 
@@ -127,7 +127,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         readyOnce.set(false)
         personOnScreen.set(false)
         mainHandler.post {
-            showLivePreview()
+            applyIsolationVisuals()
             startProvider()
         }
     }
@@ -143,21 +143,23 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         super.onDetachedFromWindow()
     }
 
-    private fun showLivePreview() {
+    // PreviewView stays MATCH_PARENT, VISIBLE, and alpha=1 so CameraX keeps its
+    // surface. Hiding it with alpha=0 or 1x1 layout killed Circle/Square after Cutout.
+    // Park it off-screen during Cutout so the room does not show through the mask.
+    private fun applyIsolationVisuals() {
         previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         previewView.visibility = View.VISIBLE
         previewView.alpha = 1f
-        isolatedView.visibility = View.GONE
-        previewView.bringToFront()
-    }
-
-    private fun showCutoutOverlay() {
-        previewView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
-        previewView.visibility = View.VISIBLE
-        previewView.alpha = 1f
-        isolatedView.visibility = View.VISIBLE
-        isolatedView.bringToFront()
-        isolatedView.invalidate()
+        if (isolatePerson.get()) {
+            previewView.translationX = 10000f
+            isolatedView.visibility = View.VISIBLE
+            isolatedView.bringToFront()
+            isolatedView.invalidate()
+        } else {
+            previewView.translationX = 0f
+            isolatedView.visibility = View.GONE
+            previewView.bringToFront()
+        }
     }
 
     private fun startProvider() {
@@ -187,7 +189,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
         val analysis = ImageAnalysis.Builder()
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-            .setTargetResolution(Size(240, 240))
+            .setTargetResolution(Size(320, 320))
             .build()
             .also { useCase ->
                 useCase.setAnalyzer(analysisExecutor, ::analyzeFrame)
@@ -224,7 +226,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
                 }
             }
             bindAttempts = 0
-            showLivePreview()
+            applyIsolationVisuals()
             if (readyOnce.compareAndSet(false, true)) {
                 onReady(mapOf("ready" to true))
             }
@@ -268,7 +270,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
 
         val bitmap = PersonCutout.rotate(raw, rotation)
         if (bitmap !== raw) raw.recycle()
-        val scaled = PersonCutout.scaleToMax(bitmap, 192)
+        val scaled = PersonCutout.scaleToMax(bitmap, 256)
         if (scaled !== bitmap) bitmap.recycle()
         val working = PersonCutout.asSoftwareArgb(scaled)
         if (working !== scaled) scaled.recycle()
@@ -288,7 +290,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
                     cutout
                 }
                 if (display !== working && !working.isRecycled) working.recycle()
-                if (isolatePerson.get() && PersonCutout.hasVisiblePerson(display)) {
+                if (isolatePerson.get()) {
                     showIsolatedBitmap(display)
                 } else {
                     if (display !== working && !display.isRecycled) display.recycle()
@@ -319,7 +321,7 @@ class SelfieCutoutView(context: Context, appContext: AppContext) : ExpoView(cont
             val firstFrame = !personOnScreen.get()
             personOnScreen.set(true)
             isolatedView.person = display
-            if (firstFrame) showCutoutOverlay() else isolatedView.invalidate()
+            if (firstFrame) applyIsolationVisuals() else isolatedView.invalidate()
             if (previous != null && previous !== display && !previous.isRecycled) {
                 previous.recycle()
             }
@@ -440,15 +442,14 @@ private class IsolatedPersonView(context: Context) : View(context) {
 
     init {
         setWillNotDraw(false)
-        setBackgroundColor(Color.BLACK)
+        setBackgroundColor(Color.TRANSPARENT)
         setLayerType(LAYER_TYPE_SOFTWARE, null)
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
     }
 
-    override fun hasOverlappingRendering(): Boolean = false
+    override fun hasOverlappingRendering(): Boolean = true
 
     override fun onDraw(canvas: Canvas) {
-        canvas.drawColor(Color.BLACK)
         val bmp = person ?: return
         if (bmp.isRecycled || width <= 0 || height <= 0) return
         val viewW = width.toFloat()

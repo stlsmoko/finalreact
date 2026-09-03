@@ -119,18 +119,6 @@ export default function ReactionRecordScreen() {
   });
   const observedSourceTime = timeUpdate?.currentTime ?? 0;
 
-  useEventListener(player, "playToEnd", () => {
-    try {
-      player.pause();
-      const duration = Number(player.duration);
-      if (Number.isFinite(duration) && duration > 0.05) {
-        player.currentTime = Math.max(0, duration - 0.04);
-      }
-    } catch {
-      // Keep the last decoded frame on screen. Camera recording continues until Stop.
-    }
-  });
-
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [microphonePermission, requestMicrophonePermission] = useMicrophonePermissions();
   const [facing, setFacing] = useState<"front" | "back">("front");
@@ -157,6 +145,7 @@ export default function ReactionRecordScreen() {
 
   const [studioSize, setStudioSize] = useState({ width, height });
   const [isSourcePaused, setIsSourcePaused] = useState(false);
+  const [isClipPreviewPlaying, setIsClipPreviewPlaying] = useState(false);
   const [, setSourcePauses] = useState<SourcePause[]>([]);
 
   const recordAttempt = useRef(0);
@@ -172,10 +161,30 @@ export default function ReactionRecordScreen() {
   const sourcePausesRef = useRef<SourcePause[]>([]);
   const isRecordingRef = useRef(false);
   const isCompositingRef = useRef(false);
+  const isClipPreviewPlayingRef = useRef(false);
   const overlayStyleRef = useRef<OverlayStyle>(overlayStyle);
   const stopRequestedRef = useRef(false);
   const recordingStartedAtMsRef = useRef<number | null>(null);
   const recordingStopDurationSecRef = useRef<number | null>(null);
+
+  useEventListener(player, "playToEnd", () => {
+    try {
+      player.pause();
+      if (isClipPreviewPlayingRef.current && !isRecordingRef.current) {
+        isClipPreviewPlayingRef.current = false;
+        setIsClipPreviewPlaying(false);
+        player.currentTime = 0;
+        sourceTimeRef.current = 0;
+        return;
+      }
+      const duration = Number(player.duration);
+      if (Number.isFinite(duration) && duration > 0.05) {
+        player.currentTime = Math.max(0, duration - 0.04);
+      }
+    } catch {
+      // Keep the last decoded frame on screen. Camera recording continues until Stop.
+    }
+  });
 
   const sourceVideoRect = useMemo(
     () => getContainedVideoRect(studioSize, { width: source?.width, height: source?.height }),
@@ -204,9 +213,9 @@ export default function ReactionRecordScreen() {
     sourceAudioGainRef.current = effectiveReelGain;
     reactionAudioGainRef.current = effectiveMicGain;
     if (!isSourcePaused && !isCompositing) {
-      playerRef.current.volume = isAutoDucking ? effectiveReelGain * 0.5 : effectiveReelGain;
+      playerRef.current.volume = isRecording && isAutoDucking ? effectiveReelGain * 0.5 : effectiveReelGain;
     }
-  }, [effectiveMicGain, effectiveReelGain, isAutoDucking, isCompositing, isSourcePaused]);
+  }, [effectiveMicGain, effectiveReelGain, isAutoDucking, isCompositing, isRecording, isSourcePaused]);
 
   useEffect(() => {
     isRecordingRef.current = isRecording;
@@ -412,6 +421,16 @@ export default function ReactionRecordScreen() {
     }
   }
 
+  function stopClipPreview() {
+    if (!isClipPreviewPlayingRef.current) return;
+    isClipPreviewPlayingRef.current = false;
+    setIsClipPreviewPlaying(false);
+    try {
+      player.pause();
+    } catch {
+    }
+  }
+
   function toggleSourcePause() {
     if (!isRecording || isCompositing) return;
     if (isSourcePaused) {
@@ -425,6 +444,30 @@ export default function ReactionRecordScreen() {
     player.pause();
     sourcePauseStart.current = { sourceTimeSec: stableSourceTime, wallTimeMs: Date.now() };
     setIsSourcePaused(true);
+  }
+
+  function toggleClipPreview() {
+    if (isCompositing) return;
+    if (isRecording) {
+      toggleSourcePause();
+      return;
+    }
+    if (isClipPreviewPlayingRef.current) {
+      stopClipPreview();
+      return;
+    }
+    try {
+      const duration = Number(player.duration);
+      if (Number.isFinite(duration) && duration > 0 && sourceTimeRef.current >= duration - 0.08) {
+        player.currentTime = 0;
+        sourceTimeRef.current = 0;
+      }
+      playerRef.current.volume = effectiveReelGain;
+      player.play();
+      isClipPreviewPlayingRef.current = true;
+      setIsClipPreviewPlaying(true);
+    } catch {
+    }
   }
 
   async function toggleRecording() {
@@ -468,6 +511,7 @@ export default function ReactionRecordScreen() {
     setSourcePauses([]);
     sourcePauseStart.current = null;
     setIsSourcePaused(false);
+    stopClipPreview();
     stopRequestedRef.current = false;
     setRecordingElapsedSeconds(0);
     if (Platform.OS !== "web") {
@@ -518,6 +562,7 @@ export default function ReactionRecordScreen() {
           studioSize,
           sourceSize: { width: source?.width, height: source?.height },
           overlayStyle,
+          facing,
           sourcePauses: completedSourcePauses,
           stopDurationSec: finalDurationSec,
           sourceAudioGain: sourceAudioGainRef.current,
@@ -554,6 +599,7 @@ export default function ReactionRecordScreen() {
   }
 
   function handleChangeClip() {
+    stopClipPreview();
     player.pause();
     clearSession();
     router.replace("/");
@@ -694,8 +740,8 @@ export default function ReactionRecordScreen() {
             </Pressable>
           </View>
           <View style={styles.shutterBar}>
-            <Pressable onPress={toggleSourcePause} disabled={!isRecording} style={({ pressed }) => [styles.dockSideBtn, isSourcePaused && styles.dockSideBtnPaused, !isRecording && styles.dockSideBtnDisabled, pressed && styles.btnPressed]}>
-              <Text style={[styles.dockSideBtnIcon, isSourcePaused && styles.dockSideBtnIconPaused]}>{isSourcePaused ? "▶" : "⏸"}</Text>
+            <Pressable onPress={toggleClipPreview} disabled={isCompositing} style={({ pressed }) => [styles.dockSideBtn, ((isRecording && isSourcePaused) || (!isRecording && isClipPreviewPlaying)) && styles.dockSideBtnPaused, isCompositing && styles.dockSideBtnDisabled, pressed && styles.btnPressed]}>
+              <Text style={[styles.dockSideBtnIcon, isRecording && isSourcePaused && styles.dockSideBtnIconPaused]}>{(isRecording ? isSourcePaused : !isClipPreviewPlaying) ? "▶" : "⏸"}</Text>
             </Pressable>
             <Pressable onPress={toggleRecording} disabled={isCompositing} style={({ pressed }) => [styles.appleShutter, pressed && styles.btnPressed]}>
               <View style={[styles.shutterCore, isRecording && styles.shutterCoreRecording]} />
@@ -730,6 +776,13 @@ export default function ReactionRecordScreen() {
                     <Text style={styles.audioRowValue}>{isReelMuted ? "Muted" : `${reelVolume}%`}</Text>
                   </View>
                   <View style={styles.audioSliderWrap}>
+                    <Pressable
+                      onPress={toggleClipPreview}
+                      disabled={isRecording || isCompositing}
+                      style={[styles.audioIconBtn, isClipPreviewPlaying && styles.audioIconBtnMuted, (isRecording || isCompositing) && styles.dockSideBtnDisabled]}
+                    >
+                      <Text style={styles.audioIconBtnText}>{isClipPreviewPlaying ? "⏸" : "▶"}</Text>
+                    </Pressable>
                     <Pressable onPress={() => setIsReelMuted((m) => !m)} style={[styles.audioIconBtn, isReelMuted && styles.audioIconBtnMuted]}>
                       <Text style={styles.audioIconBtnText}>{isReelMuted ? "🔇" : "🔊"}</Text>
                     </Pressable>
