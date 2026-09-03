@@ -97,7 +97,9 @@ export function getOutputOverlay({ overlay, studioSize }: CompositeGeometry) {
   const stageHeight = Math.max(1, studioSize.height);
   const scaleX = OUTPUT_WIDTH / stageWidth;
   const scaleY = OUTPUT_HEIGHT / stageHeight;
-  const size = Math.max(80, Math.round(overlay.size * scaleX));
+  let size = Math.max(80, Math.round(overlay.size * scaleX));
+  if (size % 2) size += 1;
+  size = Math.min(size, OUTPUT_WIDTH);
 
   return {
     x: Math.max(0, Math.min(OUTPUT_WIDTH - size, Math.round(overlay.x * scaleX))),
@@ -113,31 +115,31 @@ function buildReactionFilters(
   facing: "front" | "back",
 ) {
   const flip = facing === "back" ? "" : "hflip,";
-  const reactionBase = `[1:v]${flip}scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=decrease,pad=${overlaySize}:${overlaySize}:(ow-iw)/2:(oh-ih)/2:black@0,setsar=1`;
+  const fillBase = `[1:v]${flip}scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=increase,crop=${overlaySize}:${overlaySize},setsar=1`;
 
   if (overlayStyle === "circle") {
     return [
-      `${reactionBase},format=rgba[reaction_rgba]`,
+      `${fillBase},format=rgba[reaction_rgba]`,
       `color=c=black:s=${overlaySize}x${overlaySize},format=gray,geq=lum='if(lte(hypot(X-W/2\\,Y-H/2)\\,W/2-1)\\,255\\,0)'[reaction_alpha]`,
       "[reaction_rgba][reaction_alpha]alphamerge[reaction]",
     ];
   }
 
   if (overlayStyle === "green-screen") {
-    return [`${reactionBase},format=rgba,chromakey=0x00FF00:0.32:0.12[reaction]`];
+    return [`${fillBase},format=rgba,chromakey=0x00FF00:0.32:0.12[reaction]`];
   }
 
   if (overlayStyle === "cutout" && hasPersonMask) {
     return [
-      `[2:v]${flip}fps=30,setpts=PTS-STARTPTS,scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=decrease,pad=${overlaySize}:${overlaySize}:(ow-iw)/2:(oh-ih)/2:black@0,setsar=1,format=rgba[reaction]`,
+      `[2:v]${flip}fps=30,setpts=PTS-STARTPTS,scale=${overlaySize}:${overlaySize}:force_original_aspect_ratio=increase,crop=${overlaySize}:${overlaySize},setsar=1,format=rgba[reaction]`,
     ];
   }
 
   if (overlayStyle === "cutout") {
-    return [`${reactionBase},format=rgba[reaction]`];
+    return [`${fillBase},format=rgba[reaction]`];
   }
 
-  return [`${reactionBase}[reaction]`];
+  return [`${fillBase}[reaction]`];
 }
 
 export function buildCompositeCommand(

@@ -10,6 +10,15 @@ describe("composite command geometry", () => {
     })).toEqual({ x: 0, y: 1000, size: 280 });
   });
 
+  it("keeps overlay size even so mpeg4 yuv420p can encode Square", () => {
+    const overlay = getOutputOverlay({
+      overlay: { x: 0, y: 80, size: 133 },
+      studioSize: { width: 360, height: 640 },
+    });
+    expect(overlay.x).toBe(0);
+    expect(overlay.size % 2).toBe(0);
+  });
+
   it("does not guess a smaller 9:16 stage from full-canvas chrome insets", () => {
     expect(getOutputOverlay({
       overlay: { x: 12, y: 80, size: 132 },
