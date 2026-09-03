@@ -112,7 +112,7 @@ export default function ReviewScreen() {
           <View style={styles.closeButton} />
         </View>
         <View style={styles.previewCard}>
-          <VideoView style={styles.preview} player={player} contentFit="contain" nativeControls />
+          <VideoView style={styles.preview} player={player} contentFit="cover" nativeControls />
         </View>
         <View style={styles.statusCard}>
           <View style={styles.statusIcon}><MaterialIcons name="check" size={21} color="#0C1018" /></View>
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   header: { alignItems: "center", flexDirection: "row", height: 58, justifyContent: "space-between" },
   closeButton: { alignItems: "center", height: 40, justifyContent: "center", width: 40 },
   headerTitle: { color: "#F7F8FA", fontSize: 17, fontWeight: "700" },
-  previewCard: { aspectRatio: 9 / 14, backgroundColor: "#000000", borderColor: "#283244", borderRadius: 28, borderWidth: 1, overflow: "hidden", width: "100%" },
+  previewCard: { aspectRatio: 9 / 16, backgroundColor: "#000000", borderColor: "#283244", borderRadius: 28, borderWidth: 1, overflow: "hidden", width: "100%" },
   preview: { flex: 1 },
   statusCard: { alignItems: "center", backgroundColor: "#171E2B", borderColor: "#283244", borderRadius: 18, borderWidth: 1, flexDirection: "row", marginTop: 17, padding: 14 },
   statusIcon: { alignItems: "center", backgroundColor: "#36C98A", borderRadius: 13, height: 28, justifyContent: "center", width: 28 },
