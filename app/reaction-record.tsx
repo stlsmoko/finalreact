@@ -25,7 +25,6 @@ import { ScreenContainer } from "@/components/screen-container";
 import {
   beginReactionCameraRecording,
   clampOverlayToRect,
-  getContainedVideoRect,
   getRecordingStartBlocker,
   type OverlayPosition,
 } from "@/lib/reaction-project";
@@ -186,16 +185,14 @@ export default function ReactionRecordScreen() {
     }
   });
 
-  const sourceVideoRect = useMemo(
-    () => getContainedVideoRect(studioSize, { width: source?.width, height: source?.height }),
-    [source?.height, source?.width, studioSize]
-  );
   const overlayRect = useMemo(
     () => ({
-      ...sourceVideoRect,
-      height: Math.max(0, sourceVideoRect.height - 120),
+      x: 0,
+      y: 0,
+      width: studioSize.width,
+      height: studioSize.height,
     }),
-    [sourceVideoRect]
+    [studioSize]
   );
 
   useEffect(() => {
@@ -625,13 +622,7 @@ export default function ReactionRecordScreen() {
 
   return (
     <ScreenContainer edges={["top", "bottom", "left", "right"]} containerClassName="bg-black" safeAreaClassName="bg-black">
-      <View
-        onLayout={(event: LayoutChangeEvent) => {
-          const { width: nextWidth, height: nextHeight } = event.nativeEvent.layout;
-          if (nextWidth > 0 && nextHeight > 0) setStudioSize({ width: nextWidth, height: nextHeight });
-        }}
-        style={styles.canvas}
-      >
+      <View style={styles.canvas}>
         <View style={styles.topBar}>
           <View style={styles.brand}>
             <View style={styles.brandDot} />
@@ -648,7 +639,13 @@ export default function ReactionRecordScreen() {
           </View>
         </View>
         <View style={styles.viewportWrapper}>
-          <View style={styles.stageBox}>
+          <View
+            onLayout={(event: LayoutChangeEvent) => {
+              const { width: nextWidth, height: nextHeight } = event.nativeEvent.layout;
+              if (nextWidth > 0 && nextHeight > 0) setStudioSize({ width: nextWidth, height: nextHeight });
+            }}
+            style={styles.stageBox}
+          >
             <VideoView style={StyleSheet.absoluteFill} player={player} contentFit="cover" nativeControls={false} surfaceType="textureView" />
             {isRecording && !isCompositing ? (
               <View style={styles.recordPill}>

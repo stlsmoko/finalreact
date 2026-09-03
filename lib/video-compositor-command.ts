@@ -27,21 +27,6 @@ function backgroundChain(input: string, output: string) {
   return `${input}scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1${output}`;
 }
 
-function studioStageSize(studioSize: { width: number; height: number }) {
-  const width = Math.max(1, studioSize.width);
-  const height = Math.max(1, studioSize.height);
-  if (Math.abs(width / height - 9 / 16) <= 0.05) {
-    return { width, height };
-  }
-  const innerWidth = Math.max(1, width - 24);
-  const innerHeight = Math.max(1, height - 218);
-  const fromWidth = innerWidth * (16 / 9);
-  if (fromWidth <= innerHeight) {
-    return { width: innerWidth, height: fromWidth };
-  }
-  return { width: innerHeight * (9 / 16), height: innerHeight };
-}
-
 export function normalizeSourcePauses(pauses: CompositeGeometry["sourcePauses"] = []) {
   const normalized: { sourceTimeSec: number; durationSec: number }[] = [];
   for (const pause of pauses) {
@@ -108,16 +93,16 @@ function buildSourceTimelineFilters(pauses: CompositeGeometry["sourcePauses"] = 
 }
 
 export function getOutputOverlay({ overlay, studioSize }: CompositeGeometry) {
-  const stage = studioStageSize(studioSize);
-  const scaleX = OUTPUT_WIDTH / stage.width;
-  const scaleY = OUTPUT_HEIGHT / stage.height;
-  const maxX = Math.max(0, OUTPUT_WIDTH - 80);
-  const maxY = Math.max(0, OUTPUT_HEIGHT - 80);
+  const stageWidth = Math.max(1, studioSize.width);
+  const stageHeight = Math.max(1, studioSize.height);
+  const scaleX = OUTPUT_WIDTH / stageWidth;
+  const scaleY = OUTPUT_HEIGHT / stageHeight;
+  const size = Math.max(80, Math.round(overlay.size * scaleX));
 
   return {
-    x: Math.max(0, Math.min(maxX, Math.round(overlay.x * scaleX))),
-    y: Math.max(0, Math.min(maxY, Math.round(overlay.y * scaleY))),
-    size: Math.max(80, Math.round(overlay.size * scaleX)),
+    x: Math.max(0, Math.min(OUTPUT_WIDTH - size, Math.round(overlay.x * scaleX))),
+    y: Math.max(0, Math.min(OUTPUT_HEIGHT - size, Math.round(overlay.y * scaleY))),
+    size,
   };
 }
 

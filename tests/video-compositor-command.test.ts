@@ -3,12 +3,18 @@ import { describe, expect, it } from "vitest";
 import { buildCompositeCommand, getOutputOverlay, normalizeSourcePauses } from "../lib/video-compositor-command";
 
 describe("composite command geometry", () => {
-  it("maps the bubble through the same contained-video rectangle used by the studio preview", () => {
+  it("maps a stage-relative bubble 1:1 onto 720×1280 so a left-edge head stays on the left edge", () => {
     expect(getOutputOverlay({
-      overlay: { x: 236, y: 126, size: 132 },
+      overlay: { x: 0, y: 500, size: 140 },
+      studioSize: { width: 360, height: 640 },
+    })).toEqual({ x: 0, y: 1000, size: 280 });
+  });
+
+  it("does not guess a smaller 9:16 stage from full-canvas chrome insets", () => {
+    expect(getOutputOverlay({
+      overlay: { x: 12, y: 80, size: 132 },
       studioSize: { width: 390, height: 844 },
-      sourceSize: { width: 720, height: 1280 },
-    })).toEqual({ x: 436, y: 94, size: 244 });
+    })).toEqual({ x: 22, y: 121, size: 244 });
   });
 
   it("retains only monotonic pause markers and merges repeated taps at one source frame", () => {
@@ -47,7 +53,7 @@ describe("composite command", () => {
     expect(command.filter).toContain("[0:v]scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[background]");
     expect(command.filter).toContain("[1:v]scale=244:244:force_original_aspect_ratio=increase,crop=244:244,setsar=1,format=rgba[reaction_rgba]");
     expect(command.filter).not.toContain(";setsar=1");
-    expect(command.filter).toContain("overlay=37:9:eof_action=endall:repeatlast=0:format=auto[video]");
+    expect(command.filter).toContain("overlay=37:121:eof_action=endall:repeatlast=0:format=auto[video]");
     expect(command.args).toContain("-shortest");
   });
 
@@ -83,7 +89,7 @@ describe("composite command", () => {
     expect(command.filter).toContain("[reaction]trim=duration=3.25,setpts=PTS-STARTPTS[reaction_trimmed]");
     expect(command.filter).toContain("[source_audio]atrim=duration=3.25,asetpts=PTS-STARTPTS[source_audio_trimmed]");
     expect(command.filter).toContain("[1:a]atrim=duration=3.25,aresample=48000");
-    expect(command.filter).toContain("overlay=37:9:eof_action=pass:repeatlast=0:format=auto[video]");
+    expect(command.filter).toContain("overlay=37:121:eof_action=pass:repeatlast=0:format=auto[video]");
     expect(command.filter).toContain("amix=inputs=2:weights=1 12:duration=longest");
     expect(command.args).toEqual(expect.arrayContaining(["-t", "3.25"]));
     expect(command.args).not.toContain("-shortest");
