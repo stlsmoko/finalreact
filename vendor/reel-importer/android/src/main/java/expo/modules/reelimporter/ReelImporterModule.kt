@@ -49,7 +49,6 @@ class ReelImporterModule : Module() {
             isFacebookUrl(url) -> "hd/sd/best[ext=mp4]/best"
             isInstagramUrl(url) -> "best[ext=mp4]/b/bv*+ba/best"
             isTikTokUrl(url) -> "download_addr/h264/best[ext=mp4]/best"
-            isYouTubeUrl(url) -> "18/22/best[ext=mp4]/b/bv*+ba/best"
             isTwitterOrXUrl(url) -> "http-720/http-480/best[ext=mp4]/best"
             else -> "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/b/bv*+ba/best"
         }
@@ -138,7 +137,7 @@ class ReelImporterModule : Module() {
     }
 
     private fun importFromPageHtml(pageUrl: String, outputFile: File): Boolean {
-        val agents = listOf(FACEBOOK_BOT_USER_AGENT, BROWSER_USER_AGENT)
+        val agents = listOf(BROWSER_USER_AGENT)
         for (agent in agents) {
             val html = fetchHtml(pageUrl, agent) ?: continue
             val direct = extractDirectVideoUrl(html) ?: continue
@@ -158,6 +157,9 @@ class ReelImporterModule : Module() {
                     val parsedUrl = java.net.URL(url)
                     if (parsedUrl.protocol != "https" && parsedUrl.protocol != "http") {
                         throw IllegalArgumentException("Use a public http or https video link.")
+                    }
+                    if (isYouTubeUrl(parsedUrl)) {
+                        throw IllegalArgumentException("YouTube links aren't supported. Choose a saved video instead.")
                     }
 
                     val context = appContext.reactContext
@@ -239,8 +241,6 @@ class ReelImporterModule : Module() {
     }
 
     companion object {
-        private const val FACEBOOK_BOT_USER_AGENT =
-            "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)"
         private const val BROWSER_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
     }

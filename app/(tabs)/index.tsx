@@ -15,7 +15,7 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { normalizeSharedLink, validateSourceVideo } from "@/lib/reaction-project";
+import { getUnsupportedSourceMessage, normalizeSharedLink, validateSourceVideo } from "@/lib/reaction-project";
 import { getCurrentSource, setCurrentSharedLink, setCurrentSource, setCurrentRoute } from "@/lib/reaction-session";
 
 type IngestTab = "upload" | "link";
@@ -136,6 +136,11 @@ export default function HomeScreen() {
       setLinkError("Paste a full public link beginning with https://.");
       return;
     }
+    const unsupported = getUnsupportedSourceMessage(sharedUrl);
+    if (unsupported) {
+      setLinkError(unsupported);
+      return;
+    }
     setLinkError(null);
     setCurrentSharedLink({ url: sharedUrl, capturedAt: Date.now() });
     router.push({ pathname: "/shared-link", params: { url: sharedUrl } } as never);
@@ -225,7 +230,7 @@ export default function HomeScreen() {
                           if (linkError) setLinkError(null);
                         }}
                         onSubmitEditing={() => importByLink()}
-                        placeholder="Paste link (TikTok, X, MP4, Drive)…"
+                        placeholder="Paste a public video link…"
                         placeholderTextColor="#515154"
                         autoCapitalize="none"
                         autoCorrect={false}
@@ -244,7 +249,7 @@ export default function HomeScreen() {
 
 
                     <Text style={styles.linkHelpText}>
-                      Supports Direct MP4, Google Drive, Dropbox, X/Twitter, TikTok, & web video links.
+                      Works with public Facebook, Instagram, TikTok and X posts, plus direct MP4, Google Drive and Dropbox links. YouTube isn't supported.
                     </Text>
                   </View>
                 ) : null}

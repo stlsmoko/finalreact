@@ -1,6 +1,5 @@
 import * as FileSystem from "expo-file-system/legacy";
 
-const BOT_USER_AGENT = "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)";
 const BROWSER_USER_AGENT =
   "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
 
@@ -91,7 +90,7 @@ async function fetchHtml(url: string, userAgent: string) {
 }
 
 async function scrapeDirectVideoUrl(pageUrl: string) {
-  for (const userAgent of [BOT_USER_AGENT, BROWSER_USER_AGENT]) {
+  for (const userAgent of [BROWSER_USER_AGENT]) {
     try {
       const html = await fetchHtml(pageUrl, userAgent);
       if (!html) continue;

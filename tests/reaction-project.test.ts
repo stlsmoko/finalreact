@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { beginReactionCameraRecording, clampOverlay, clampOverlayToRect, getContainedVideoRect, getRecordingStartBlocker, normalizeSharedLink, shouldStopReactionForSourceEnd, validateSourceVideo } from "../lib/reaction-project";
+import { beginReactionCameraRecording, clampOverlay, clampOverlayToRect, getContainedVideoRect, getRecordingStartBlocker, getUnsupportedSourceMessage, normalizeSharedLink, shouldStopReactionForSourceEnd, validateSourceVideo } from "../lib/reaction-project";
 
 describe("source video validation", () => {
   it("requires a local video URI", () => {
@@ -93,5 +93,20 @@ describe("shared-link intake", () => {
 
   it("does not treat non-web content as a shareable social link", () => {
     expect(normalizeSharedLink("reelreactor://shared-link")).toBeNull();
+  });
+
+  it("refuses YouTube links with an explanation but allows the supported platforms", () => {
+    for (const url of ["https://www.youtube.com/watch?v=example", "https://youtu.be/example", "https://m.youtube.com/shorts/example"]) {
+      expect(getUnsupportedSourceMessage(url)).toContain("YouTube links aren't supported");
+    }
+    for (const url of [
+      "https://www.facebook.com/reel/example",
+      "https://www.instagram.com/reel/example",
+      "https://www.tiktok.com/@creator/video/123",
+      "https://x.com/creator/status/123",
+      "https://notyoutube.com/video.mp4",
+    ]) {
+      expect(getUnsupportedSourceMessage(url)).toBeNull();
+    }
   });
 });

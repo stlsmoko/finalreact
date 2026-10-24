@@ -1,12 +1,15 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { normalizeSharedLink } from "@/lib/reaction-project";
+import { getUnsupportedSourceMessage, normalizeSharedLink } from "@/lib/reaction-project";
 import { pruneReactionCache } from "@/lib/reaction-cache";
 import { getCurrentSharedLink, setCurrentSharedLink, setCurrentSource, setCurrentRoute, clearSession } from "@/lib/reaction-session";
+
+const LINK_NOTICE_KEY = "reel-reactor:link-import-notice:v1";
 
 export default function SharedLinkScreen() {
   const params = useLocalSearchParams<{ url?: string | string[] }>();
@@ -17,6 +20,8 @@ export default function SharedLinkScreen() {
   const startedRef = useRef(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [noticeAccepted, setNoticeAccepted] = useState<boolean | null>(null);
+  const unsupportedMessage = sharedUrl ? getUnsupportedSourceMessage(sharedUrl) : null;
 
   useEffect(() => {
     if (normalizedIncoming) {
@@ -26,10 +31,21 @@ export default function SharedLinkScreen() {
   }, [normalizedIncoming]);
 
   useEffect(() => {
-    if (!sharedUrl || startedRef.current) return;
+    AsyncStorage.getItem(LINK_NOTICE_KEY)
+      .then((value) => setNoticeAccepted(value === "accepted"))
+      .catch(() => setNoticeAccepted(false));
+  }, []);
+
+  useEffect(() => {
+    if (!sharedUrl || startedRef.current || noticeAccepted !== true || unsupportedMessage) return;
     startedRef.current = true;
     void importPublicVideo();
-  }, [sharedUrl]);
+  }, [sharedUrl, noticeAccepted, unsupportedMessage]);
+
+  function acceptNotice() {
+    setNoticeAccepted(true);
+    AsyncStorage.setItem(LINK_NOTICE_KEY, "accepted").catch(() => undefined);
+  }
 
   const sourceName = useMemo(() => {
     if (!sharedUrl) return "Shared link";
@@ -41,7 +57,7 @@ export default function SharedLinkScreen() {
   }, [sharedUrl]);
 
   async function importPublicVideo() {
-    if (!sharedUrl || isImporting) return;
+    if (!sharedUrl || isImporting || unsupportedMessage || noticeAccepted !== true) return;
     setImportError(null);
     setIsImporting(true);
 
@@ -150,15 +166,40 @@ export default function SharedLinkScreen() {
         </View>
       ) : null}
 
-      <View style={styles.explanationCard}>
-        <MaterialIcons name="info-outline" size={20} color="#94A3B8" />
-        <Text style={styles.explanationText}>
-          Reel Reactor extracts the video stream directly into your reaction studio. If a link is private or protected, you can select any saved clip from your device instead.
-        </Text>
-      </View>
+      {noticeAccepted === false ? (
+        <View style={styles.noticeCard}>
+          <Text style={styles.noticeTitle}>Before you import</Text>
+          <Text style={styles.noticeText}>
+            Reel Reactor is not affiliated with, endorsed by or connected to Meta, Facebook, Instagram or TikTok.
+          </Text>
+          <Text style={styles.noticeText}>
+            Only react to videos you own, have permission to use, or are commenting on or reviewing, and credit the original creator.
+          </Text>
+          <Text style={styles.noticeText}>
+            You are responsible for how you use the videos you import and the reactions you post.
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.explanationCard}>
+          <MaterialIcons name="info-outline" size={20} color="#94A3B8" />
+          <Text style={styles.explanationText}>
+            Reel Reactor brings the public video into your reaction studio. It isn&apos;t saved to your gallery on its own. If a link is private or protected, choose a saved clip from your device instead.
+          </Text>
+        </View>
+      )}
 
       <View style={styles.spacer} />
-      {sharedUrl ? (
+      {unsupportedMessage ? <Text style={styles.importError}>{unsupportedMessage}</Text> : null}
+      {sharedUrl && !unsupportedMessage && noticeAccepted === false ? (
+        <Pressable
+          onPress={acceptNotice}
+          style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryPressed]}
+        >
+          <MaterialIcons name="check" size={22} color="#080B11" />
+          <Text style={styles.primaryLabel}>I understand</Text>
+        </Pressable>
+      ) : null}
+      {sharedUrl && !unsupportedMessage && noticeAccepted === true ? (
         <Pressable
           disabled={isImporting}
           onPress={importPublicVideo}
@@ -173,7 +214,7 @@ export default function SharedLinkScreen() {
             <MaterialIcons name="download" size={22} color="#080B11" />
           )}
           <Text style={styles.primaryLabel}>
-            {isImporting ? "Getting your clip…" : "Download & react"}
+            {isImporting ? "Getting your clip…" : "Import & react"}
           </Text>
         </Pressable>
       ) : null}
@@ -201,6 +242,9 @@ const styles = StyleSheet.create({
   urlValue: { color: "#F7F8FA", fontSize: 13, lineHeight: 19, marginTop: 6 },
   explanationCard: { alignItems: "flex-start", backgroundColor: "rgba(255, 255, 255, 0.03)", borderColor: "rgba(255, 255, 255, 0.08)", borderRadius: 16, borderWidth: 1, flexDirection: "row", gap: 10, marginTop: 14, padding: 14 },
   explanationText: { color: "#94A3B8", flex: 1, fontSize: 13, lineHeight: 19 },
+  noticeCard: { backgroundColor: "rgba(56, 189, 248, 0.06)", borderColor: "rgba(56, 189, 248, 0.28)", borderRadius: 16, borderWidth: 1, gap: 8, marginTop: 14, padding: 16 },
+  noticeTitle: { color: "#F7F8FA", fontSize: 15, fontWeight: "800" },
+  noticeText: { color: "#CBD5E1", fontSize: 13, lineHeight: 19 },
   spacer: { flex: 1 },
   primaryButton: { alignItems: "center", backgroundColor: "#38BDF8", borderRadius: 16, flexDirection: "row", gap: 9, height: 56, justifyContent: "center" },
   primaryPressed: { opacity: 0.86, transform: [{ scale: 0.98 }] },

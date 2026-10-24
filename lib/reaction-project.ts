@@ -43,8 +43,23 @@ function asHttpUrl(value: string): string | null {
   }
 }
 
+const UNSUPPORTED_SOURCE_HOST = /(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be)$/i;
+
+/** Returns a message when a link points at a source Reel Reactor deliberately does not import (YouTube). */
+export function getUnsupportedSourceMessage(url: string): string | null {
+  try {
+    if (UNSUPPORTED_SOURCE_HOST.test(new URL(url).hostname)) {
+      return "YouTube links aren't supported. Choose a saved video or paste a Facebook, Instagram or TikTok link instead.";
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 /**
  * Accepts a bare URL or messy share text from Facebook, Instagram, TikTok, X, YouTube, and similar apps.
+ * YouTube links are recognised here so the importer can explain they aren't supported.
  */
 export function normalizeSharedLink(value: string): string | null {
   const text = value.replace(/\u00a0/g, " ").trim();
