@@ -18,13 +18,14 @@ const bundleId =
 const timestamp = bundleId.split(".").pop()?.replace(/^t/, "") ?? "";
 const schemeFromBundleId = `manus${timestamp}`;
 const isSideBySideDebugBuild = process.env.REEL_REACTOR_SIDE_BY_SIDE === "1";
-const androidPackage = isSideBySideDebugBuild ? `${bundleId}.test` : bundleId;
+// Test branch only: a separate audio-test app that installs beside Reel Reactor Test.
+const androidPackage = isSideBySideDebugBuild ? `${bundleId}.audiotest` : bundleId;
 
 const env = {
-  appName: isSideBySideDebugBuild ? "Reel Reactor Test" : "Reel Reactor",
+  appName: isSideBySideDebugBuild ? "Reel Reactor Audio Test" : "Reel Reactor",
   appSlug: "reel-reactor",
   logoUrl: "/manus-storage/reel-reactor-icon_4113e11e.png",
-  scheme: isSideBySideDebugBuild ? `${schemeFromBundleId}test` : schemeFromBundleId,
+  scheme: isSideBySideDebugBuild ? `${schemeFromBundleId}audiotest` : schemeFromBundleId,
   iosBundleId: bundleId,
   androidPackage,
 };
