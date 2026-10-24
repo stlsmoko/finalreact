@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCompositeCommand, getOutputOverlay, normalizeSourcePauses } from "../lib/video-compositor-command";
+import {
+  buildCompositeCommand,
+  DEFAULT_REEL_VOLUME,
+  getOutputOverlay,
+  normalizeSourcePauses,
+  reelSliderToExportGain,
+  reelSliderToLiveGain,
+  USE_LEGACY_AUDIO_MIX,
+  voiceSliderToExportGain,
+} from "../lib/video-compositor-command";
 
 describe("composite command geometry", () => {
   it("maps a stage-relative bubble 1:1 onto 720×1280 so a left-edge head stays on the left edge", () => {
@@ -55,9 +64,10 @@ describe("composite command", () => {
     ]));
     expect(command.filter).toContain("[background][reaction]overlay=");
     expect(command.filter).toContain("[reaction_rgba][reaction_alpha]alphamerge[reaction]");
-    expect(command.filter).toContain("[source_audio]volume=0.04[source_audio_scaled]");
-    expect(command.filter).toContain("[1:a]aresample=48000,asetpts=PTS-STARTPTS,volume=28,alimiter=limit=0.95[reaction_audio]");
-    expect(command.filter).toContain("amix=inputs=2:weights=1 12:duration=shortest:dropout_transition=0:normalize=0,alimiter=limit=0.96[audio]");
+    expect(command.filter).toContain("[source_audio]volume=0.36[source_audio_scaled]");
+    expect(command.filter).toContain("[1:a]volume=1.96[reaction_audio]");
+    expect(command.filter).toContain("amix=inputs=2:weights=1 1:duration=longest:dropout_transition=2:normalize=0,alimiter=limit=0.891:attack=5:release=50:level=0[audio]");
+    expect(command.filter).not.toContain("level=1");
     expect(command.filter).toContain("pad=720:1280");
     expect(command.filter).toContain("[0:v]scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[background]");
     expect(command.filter).toContain("[1:v]scale=244:244:force_original_aspect_ratio=increase,crop=244:244,setsar=1,format=rgba[reaction_rgba]");
@@ -76,12 +86,33 @@ describe("composite command", () => {
     };
 
     expect(buildCompositeCommand({ ...baseRequest, sourceAudioGain: 0.24 }).filter).toContain("[source_audio]volume=0.24[source_audio_scaled]");
-    expect(buildCompositeCommand({ ...baseRequest, sourceAudioGain: 0.9 }).filter).toContain("[source_audio]volume=0.4[source_audio_scaled]");
+    expect(buildCompositeCommand({ ...baseRequest, sourceAudioGain: 0.9 }).filter).toContain("[source_audio]volume=0.9[source_audio_scaled]");
     expect(buildCompositeCommand({ ...baseRequest, sourceAudioGain: -0.1 }).filter).toContain("[source_audio]volume=0[source_audio_scaled]");
-    expect(buildCompositeCommand({ ...baseRequest, sourceAudioGain: 2 }).filter).toContain("[source_audio]volume=0.4[source_audio_scaled]");
-    expect(buildCompositeCommand({ ...baseRequest, sourceAudioGain: 0.24 }).filter).toContain("volume=28");
-    expect(buildCompositeCommand({ ...baseRequest, reactionAudioGain: 7 }).filter).toContain("volume=7,alimiter=limit=0.95[reaction_audio]");
-    expect(buildCompositeCommand({ ...baseRequest, reactionAudioGain: 20 }).filter).toContain("volume=20,alimiter=limit=0.95[reaction_audio]");
+    expect(buildCompositeCommand({ ...baseRequest, sourceAudioGain: 2 }).filter).toContain("[source_audio]volume=1[source_audio_scaled]");
+    expect(buildCompositeCommand({ ...baseRequest, reactionAudioGain: 3 }).filter).toContain("[1:a]volume=3[reaction_audio]");
+    expect(buildCompositeCommand({ ...baseRequest, reactionAudioGain: 28 }).filter).toContain("[1:a]volume=4[reaction_audio]");
+    expect(buildCompositeCommand({ ...baseRequest, reactionAudioGain: 0 }).filter).toContain("[1:a]volume=0[reaction_audio]");
+  });
+
+  it("maps the audio sliders across their whole range without dead zones", () => {
+    expect(USE_LEGACY_AUDIO_MIX).toBe(false);
+    expect(reelSliderToExportGain(0)).toBe(0);
+    expect(reelSliderToExportGain(60)).toBeCloseTo(0.36, 5);
+    expect(reelSliderToExportGain(100)).toBe(1);
+    expect(voiceSliderToExportGain(0)).toBe(0);
+    expect(voiceSliderToExportGain(50)).toBeCloseTo(1, 5);
+    expect(voiceSliderToExportGain(70)).toBeCloseTo(1.96, 5);
+    expect(voiceSliderToExportGain(100)).toBe(4);
+    expect(voiceSliderToExportGain(90)).toBeGreaterThan(voiceSliderToExportGain(80));
+    expect(reelSliderToExportGain(150)).toBe(1);
+    expect(voiceSliderToExportGain(-5)).toBe(0);
+  });
+
+  it("keeps live monitoring at the v1.0.69 default and maximum loudness", () => {
+    expect(reelSliderToLiveGain(DEFAULT_REEL_VOLUME)).toBeCloseTo(0.024, 5);
+    expect(reelSliderToLiveGain(100)).toBeCloseTo(0.2, 5);
+    expect(reelSliderToLiveGain(0)).toBe(0);
+    expect(reelSliderToLiveGain(80)).toBeGreaterThan(reelSliderToLiveGain(70));
   });
 
   it("trims the final video and audio to the captured Stop time", () => {
@@ -99,7 +130,7 @@ describe("composite command", () => {
     expect(command.filter).toContain("[source_audio]atrim=duration=3.25,asetpts=PTS-STARTPTS[source_audio_trimmed]");
     expect(command.filter).toContain("[1:a]atrim=duration=3.25,aresample=48000");
     expect(command.filter).toContain("overlay=37:121:eof_action=pass:repeatlast=0:format=auto[video]");
-    expect(command.filter).toContain("amix=inputs=2:weights=1 12:duration=longest");
+    expect(command.filter).toContain("amix=inputs=2:weights=1 1:duration=longest");
     expect(command.args).toEqual(expect.arrayContaining(["-t", "3.25"]));
     expect(command.args).not.toContain("-shortest");
   });

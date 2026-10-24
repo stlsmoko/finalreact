@@ -12,6 +12,43 @@ export type CompositeGeometry = {
   reactionAudioGain?: number;
 };
 
+/**
+ * Rollback switch for the export audio mix. true restores the v1.0.69 mix exactly
+ * (reel gain derived from the speaker volume, mic boosted up to 28x), including the
+ * v1.0.69 slider defaults and live monitoring in the studio.
+ */
+export const USE_LEGACY_AUDIO_MIX = false;
+
+// Slider defaults (0-100) for the clean digital mix.
+export const DEFAULT_REEL_VOLUME = 60;
+export const DEFAULT_VOICE_VOLUME = 70;
+
+// Live monitoring: 60% plays at 0.024 and 100% at 0.2, the same levels as the
+// v1.0.69 default (12% x 0.2) and maximum, so what you hear while recording is unchanged.
+const LIVE_REEL_MAX_GAIN = 0.2;
+const LIVE_REEL_CURVE = Math.log(0.024 / LIVE_REEL_MAX_GAIN) / Math.log(DEFAULT_REEL_VOLUME / 100);
+
+const MAX_REACTION_AUDIO_GAIN = 4;
+
+function sliderRatio(volume: number) {
+  return Number.isFinite(volume) ? Math.max(0, Math.min(1, volume / 100)) : 0;
+}
+
+/** Player volume for the reel while previewing or recording in the studio. */
+export function reelSliderToLiveGain(volume: number) {
+  return LIVE_REEL_MAX_GAIN * Math.pow(sliderRatio(volume), LIVE_REEL_CURVE);
+}
+
+/** Export gain for the clean digital reel track: 100% keeps the original level, 60% is about -9 dB. */
+export function reelSliderToExportGain(volume: number) {
+  return sliderRatio(volume) ** 2;
+}
+
+/** Export gain for the microphone track: 50% keeps the recorded level, 70% is about +6 dB, 100% is +12 dB. */
+export function voiceSliderToExportGain(volume: number) {
+  return MAX_REACTION_AUDIO_GAIN * sliderRatio(volume) ** 2;
+}
+
 function toFfmpegPath(uri: string) {
   return uri.replace(/^file:\/\//, "");
 }
@@ -21,6 +58,35 @@ const OUTPUT_HEIGHT = 1280;
 
 function seconds(value: number) {
   return Math.max(0, Math.round(value * 1_000) / 1_000).toString();
+}
+
+function buildAudioMixFilters(request: CompositeGeometry) {
+  if (USE_LEGACY_AUDIO_MIX) {
+    const rawSourceGain = Number.isFinite(request.sourceAudioGain) ? Math.max(0, request.sourceAudioGain as number) : 0.12;
+    const sourceAudioGain = seconds(Math.min(0.35, rawSourceGain * rawSourceGain * 8));
+    const reactionAudioGain = Number.isFinite(request.reactionAudioGain)
+      ? seconds(Math.max(0, Math.min(8, request.reactionAudioGain as number)))
+      : "4";
+    return [
+      `[source_audio]volume=${sourceAudioGain}[source_audio_scaled]`,
+      `[1:a]volume=${reactionAudioGain},alimiter=limit=0.89:level=1[reaction_audio]`,
+      `[source_audio_scaled][reaction_audio]amix=inputs=2:weights=1 6:duration=longest:dropout_transition=2:normalize=0,volume=0.36[audio]`,
+    ];
+  }
+
+  // The clean reel track carries the reel sound; the mic only needs a modest boost, which also
+  // keeps the speaker sound it picks up low. One limiter at -1 dBFS (no auto-level) stops clipping.
+  const sourceAudioGain = Number.isFinite(request.sourceAudioGain)
+    ? seconds(Math.max(0, Math.min(1, request.sourceAudioGain as number)))
+    : seconds(reelSliderToExportGain(DEFAULT_REEL_VOLUME));
+  const reactionAudioGain = Number.isFinite(request.reactionAudioGain)
+    ? seconds(Math.max(0, Math.min(MAX_REACTION_AUDIO_GAIN, request.reactionAudioGain as number)))
+    : seconds(voiceSliderToExportGain(DEFAULT_VOICE_VOLUME));
+  return [
+    `[source_audio]volume=${sourceAudioGain}[source_audio_scaled]`,
+    `[1:a]volume=${reactionAudioGain}[reaction_audio]`,
+    `[source_audio_scaled][reaction_audio]amix=inputs=2:weights=1 1:duration=longest:dropout_transition=2:normalize=0,alimiter=limit=0.891:attack=5:release=50:level=0[audio]`,
+  ];
 }
 
 function backgroundChain(input: string, output: string) {
@@ -156,11 +222,6 @@ export function buildCompositeCommand(
   const stopDurationSec = Number.isFinite(request.stopDurationSec) && (request.stopDurationSec ?? 0) > 0.05
     ? seconds(request.stopDurationSec as number)
     : null;
-  const rawSourceGain = Number.isFinite(request.sourceAudioGain) ? Math.max(0, request.sourceAudioGain as number) : 0.12;
-  const sourceAudioGain = seconds(Math.min(0.35, rawSourceGain * rawSourceGain * 8));
-  const reactionAudioGain = Number.isFinite(request.reactionAudioGain)
-    ? seconds(Math.max(0, Math.min(8, request.reactionAudioGain as number)))
-    : "4";
   const reactionFilters = buildReactionFilters(overlayStyle, overlay.size, hasPersonMask, facing);
   const timelineFilters = stopDurationSec
     ? [
@@ -175,9 +236,7 @@ export function buildCompositeCommand(
     ...reactionFilters,
     ...timelineFilters,
     `${backgroundLabel}${reactionLabel}overlay=${overlay.x}:${overlay.y}:eof_action=pass:repeatlast=1:format=auto[video]`,
-    `[source_audio]volume=${sourceAudioGain}[source_audio_scaled]`,
-    `[1:a]volume=${reactionAudioGain},alimiter=limit=0.89:level=1[reaction_audio]`,
-    `[source_audio_scaled][reaction_audio]amix=inputs=2:weights=1 6:duration=longest:dropout_transition=2:normalize=0,volume=0.36[audio]`,
+    ...buildAudioMixFilters(request),
   ].join(";");
 
   const args = [

@@ -31,6 +31,14 @@ import {
 import { pruneReactionCache } from "@/lib/reaction-cache";
 import { getCurrentSource, setCurrentReaction, setCurrentRoute, clearSession } from "@/lib/reaction-session";
 import { composeReactionVideo } from "@/lib/video-compositor";
+import {
+  DEFAULT_REEL_VOLUME,
+  DEFAULT_VOICE_VOLUME,
+  reelSliderToExportGain,
+  reelSliderToLiveGain,
+  USE_LEGACY_AUDIO_MIX,
+  voiceSliderToExportGain,
+} from "@/lib/video-compositor-command";
 import SelfieCutoutNative from "selfie-cutout";
 
 const MIN_OVERLAY_SIZE = 96;
@@ -136,8 +144,8 @@ export default function ReactionRecordScreen() {
   const [isCutoutReady, setIsCutoutReady] = useState(false);
 
   const [isAudioSheetOpen, setIsAudioSheetOpen] = useState(false);
-  const [reelVolume, setReelVolume] = useState(12);
-  const [micVolume, setMicVolume] = useState(100);
+  const [reelVolume, setReelVolume] = useState(USE_LEGACY_AUDIO_MIX ? 12 : DEFAULT_REEL_VOLUME);
+  const [micVolume, setMicVolume] = useState(USE_LEGACY_AUDIO_MIX ? 100 : DEFAULT_VOICE_VOLUME);
   const [isReelMuted, setIsReelMuted] = useState(false);
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [isAutoDucking, setIsAutoDucking] = useState(true);
@@ -201,18 +209,28 @@ export default function ReactionRecordScreen() {
     }
   }, [observedSourceTime]);
 
-  const effectiveReelGain = isReelMuted ? 0 : (reelVolume / 100) * 0.2;
-  const effectiveMicGain = isMicMuted ? 0 : (micVolume / 100) * 28;
-  const sourceAudioGainRef = useRef(effectiveReelGain);
+  // effectiveReelGain is the live player volume; the export gains go to the compositor.
+  const effectiveReelGain = isReelMuted
+    ? 0
+    : USE_LEGACY_AUDIO_MIX
+      ? (reelVolume / 100) * 0.2
+      : reelSliderToLiveGain(reelVolume);
+  const exportReelGain = USE_LEGACY_AUDIO_MIX ? effectiveReelGain : isReelMuted ? 0 : reelSliderToExportGain(reelVolume);
+  const effectiveMicGain = isMicMuted
+    ? 0
+    : USE_LEGACY_AUDIO_MIX
+      ? (micVolume / 100) * 28
+      : voiceSliderToExportGain(micVolume);
+  const sourceAudioGainRef = useRef(exportReelGain);
   const reactionAudioGainRef = useRef(effectiveMicGain);
 
   useEffect(() => {
-    sourceAudioGainRef.current = effectiveReelGain;
+    sourceAudioGainRef.current = exportReelGain;
     reactionAudioGainRef.current = effectiveMicGain;
     if (!isSourcePaused && !isCompositing) {
       playerRef.current.volume = isRecording && isAutoDucking ? effectiveReelGain * 0.5 : effectiveReelGain;
     }
-  }, [effectiveMicGain, effectiveReelGain, isAutoDucking, isCompositing, isRecording, isSourcePaused]);
+  }, [effectiveMicGain, effectiveReelGain, exportReelGain, isAutoDucking, isCompositing, isRecording, isSourcePaused]);
 
   useEffect(() => {
     isRecordingRef.current = isRecording;
