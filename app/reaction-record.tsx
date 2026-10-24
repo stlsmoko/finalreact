@@ -61,32 +61,45 @@ function AppleAudioSlider({
   max?: number;
   onChange: (val: number) => void;
 }) {
-  const [trackWidth, setTrackWidth] = useState(0);
+  // Keep the responder stable while the displayed percentage updates.
+  // locationX can jump between children during a drag; gestureState.dx is
+  // measured from the original touch instead.
+  const trackWidthRef = useRef(0);
+  const touchStartXRef = useRef(0);
+  const onChangeRef = useRef(onChange);
+  const maxRef = useRef(max);
+  onChangeRef.current = onChange;
+  maxRef.current = max;
+
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (event) => {
-          if (trackWidth > 0) {
-            const ratio = Math.max(0, Math.min(1, event.nativeEvent.locationX / trackWidth));
-            onChange(Math.round(ratio * max));
+          touchStartXRef.current = event.nativeEvent.locationX;
+          const width = trackWidthRef.current;
+          if (width > 0) {
+            const ratio = Math.max(0, Math.min(1, touchStartXRef.current / width));
+            onChangeRef.current(Math.round(ratio * maxRef.current));
           }
         },
-        onPanResponderMove: (event) => {
-          if (trackWidth > 0) {
-            const ratio = Math.max(0, Math.min(1, event.nativeEvent.locationX / trackWidth));
-            onChange(Math.round(ratio * max));
+        onPanResponderMove: (_event, gestureState) => {
+          const width = trackWidthRef.current;
+          if (width > 0) {
+            const x = touchStartXRef.current + gestureState.dx;
+            const ratio = Math.max(0, Math.min(1, x / width));
+            onChangeRef.current(Math.round(ratio * maxRef.current));
           }
         },
       }),
-    [max, onChange, trackWidth]
+    []
   );
   const percentage = Math.max(0, Math.min(100, (value / max) * 100));
 
   return (
     <View
-      onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+      onLayout={(e) => { trackWidthRef.current = e.nativeEvent.layout.width; }}
       style={styles.sliderTrack}
       {...panResponder.panHandlers}
     >
